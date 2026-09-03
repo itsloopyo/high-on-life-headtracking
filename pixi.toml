@@ -1,0 +1,64 @@
+[workspace]
+name = "high-on-life-headtracking"
+version = "0.0.0"
+description = "Head tracking mod for High On Life (Unreal Engine 4)"
+license = "MIT"
+license-file = "LICENSE"
+channels = ["conda-forge"]
+platforms = ["win-64"]
+
+[tasks]
+sync = "git submodule update --remote cameraunlock-core"
+
+# No -G: let CMake auto-detect the installed Visual Studio generator. Pinning
+# "Visual Studio 17 2022" breaks as soon as a runner image moves to a newer VS.
+setup = { cmd = """
+    powershell -Command "if (-not (Test-Path 'build')) { cmake -B build -A x64 } else { Write-Host 'Build directory exists, skipping setup' -ForegroundColor Yellow }"
+""" }
+
+build = { cmd = "cmake --build build --config Release", depends-on = ["setup"] }
+build-debug = { cmd = "cmake --build build --config Debug", depends-on = ["setup"] }
+
+# Behaviour locks for the camera boundary, the presentation gate and the INI
+# contract. No game, no hooks, no Windows machinery - runs anywhere.
+test = { cmd = "ctest --test-dir build -C Release --output-on-failure", depends-on = ["build"] }
+
+clean = { cmd = """
+    powershell -Command "if (Test-Path 'build') { Remove-Item 'build' -Recurse -Force }; Write-Host 'Build artifacts cleaned' -ForegroundColor Green"
+""" }
+
+clean-all = { cmd = """
+    powershell -Command "if (Test-Path 'build') { Remove-Item 'build' -Recurse -Force }; if (Test-Path 'release') { Remove-Item 'release' -Recurse -Force }; Write-Host 'All build artifacts cleaned' -ForegroundColor Green"
+""" }
+
+# Bump the vendored Ultimate ASI Loader copy. Manual, with a commit attached -
+# nothing depends on it; build/package/release consume whatever is committed.
+update-deps = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/update-deps.ps1" }
+
+package = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["build"] }
+
+# Full release workflow: stamp version, changelog, package, commit, tag, push.
+release = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release.ps1" }
+
+deploy = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy.ps1", depends-on = ["build"] }
+
+# Strip the intro/logo movies out of the local install so the test loop is
+# short. fast-boot-restore puts them back.
+fast-boot = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fast-boot.ps1" }
+fast-boot-status = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fast-boot.ps1 -Action Status" }
+fast-boot-restore = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fast-boot.ps1 -Action Restore" }
+
+launch = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/launch.ps1" }
+
+# Named because the fleet's tooling and other mods' error messages assume they
+# exist. Both are real checks, not stubs.
+validate-manifest = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate-manifest.ps1" }
+validate-notices = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate-notices.ps1" }
+
+release-nightly = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-nightly.ps1" }
+
+install = { depends-on = ["deploy"] }
+uninstall = "./scripts/uninstall.cmd"
+
+[dependencies]
+# No pixi-managed deps - relies on system CMake + Visual Studio.

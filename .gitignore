@@ -1,0 +1,46 @@
+# Agent tooling and machine-generated docs (never tracked - see AGENTS.md)
+.claude/
+.lab/
+skills/
+AGENTS.md
+CLAUDE.md
+NEXUS_MODS.md
+mcp.json
+.mcp.json
+.mcp/
+
+# Reverse-engineering scratch output (keep on disk, never deliverable)
+scratch/
+.scratch/
+ghidra/
+*.gpr
+*.rep/
+*.dmp
+
+# Build outputs
+build/
+bin/
+obj/
+out/
+dist/
+release/
+cmake-build-*/
+libs/
+src/*/libs/
+*.aps
+*.ilk
+*.pdb
+
+# Tooling / IDE
+.pixi/
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Runtime
+*.log
+
+# Installer state
+.headtracking-state.json

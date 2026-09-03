@@ -1,0 +1,68 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 itsloopyo
+
+name: Build
+
+on:
+  push:
+    branches: ['**']
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+
+jobs:
+  build:
+    name: Build and package
+    runs-on: windows-latest
+    # Release tags are built by release.yml; skip the bump commit release.ps1 pushes.
+    if: ${{ !startsWith(github.event.head_commit.message, 'Release v') }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6.1.0
+        with:
+          submodules: recursive
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@30375c66a4eea26614e0d39710365f22f8b0af57  # v3.0.0
+
+      - name: Set up pixi
+        uses: prefix-dev/setup-pixi@5185adfbffb4bd703da3010310260805d89ebb11  # v0.9.6
+
+      # The same command a developer runs. All build logic - CMake configure,
+      # the Release build, packaging - lives in the pixi task chain, never here.
+      # Needs no GH_TOKEN: package-release.ps1 consumes the loader bytes already
+      # committed under vendor/ and never reaches the network.
+      - name: Build and package
+        run: pixi run package
+
+      # The suites are pure functions - camera boundary, INI contract, both ADS
+      # walks, the presentation gate, the guarded reads - so they need no game
+      # and run in under a second. Compiling them in CI and not running them,
+      # which is what happened before, buys nothing.
+      - name: Test
+        run: pixi run test
+
+      - name: Verify installer was produced
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'release')) {
+            Write-Error 'pixi run package produced no release/ directory.'
+            exit 1
+          }
+          $zips = @(Get-ChildItem -Path 'release' -Filter '*-installer.zip' -File)
+          if ($zips.Count -eq 0) {
+            Write-Error 'pixi run package produced no release/*-installer.zip.'
+            exit 1
+          }
+          foreach ($zip in $zips) {
+            $mb = [math]::Round($zip.Length / 1MB, 2)
+            Write-Host "Produced $($zip.Name) ($mb MB)"
+          }
