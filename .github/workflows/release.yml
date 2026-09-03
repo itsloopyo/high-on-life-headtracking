@@ -121,8 +121,18 @@ jobs:
       - name: Set up MSBuild
         uses: microsoft/setup-msbuild@30375c66a4eea26614e0d39710365f22f8b0af57  # v3.0.0
 
+      # run-install: pixi is a task runner here and nothing more - the build
+      # takes CMake and MSVC from the runner image, so [dependencies] is empty
+      # by design and the default environment resolves to zero packages. The
+      # action's post-install `pixi list --locked` treats that as an error
+      # ("No packages found in 'default' environment for 'win-64' platform")
+      # and fails the job before any task runs. Turning the install off skips
+      # that call, and the project cache round-trip with it, while still
+      # putting pixi on PATH for the `pixi run` steps below.
       - name: Set up pixi
         uses: prefix-dev/setup-pixi@5185adfbffb4bd703da3010310260805d89ebb11  # v0.9.6
+        with:
+          run-install: false
 
       # The same command build.yml and developers run - no build logic here.
       - name: Build and package
