@@ -11,5 +11,6 @@
 - Aim-down-sights handling on `Insert` / `Ctrl+Shift+U`, cycling tracking paused and tracking on. There is no aim-marker mode: the game keeps its own crosshair through an aim, and it is already on the point the shot will hit.
 - Hotkeys to toggle tracking (`End` / `Ctrl+Shift+Y`), cycle tracking mode (`Page Up` / `Ctrl+Shift+G`) and toggle world-locked or camera-local yaw (`Page Down` / `Ctrl+Shift+H`).
 - `HeadTracking.ini`, written next to the game exe on first launch with comments on the settings that need them.
+- Support for the PC Game Pass / Microsoft Store build alongside the Steam one. Both are recognised by fingerprint and each gets its own offsets, so one download covers either store, and the installer deploys to whichever copies are present.
 - Build fingerprinting against a registry of known game builds, leaving the mod dormant on a build it does not recognise.
 - `install.cmd` and `uninstall.cmd`, deploying the vendored Ultimate ASI Loader alongside the mod.

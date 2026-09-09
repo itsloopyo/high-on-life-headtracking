@@ -3,12 +3,22 @@
 
 <#
 .SYNOPSIS
-    Copies the freshly built .asi and the vendored ASI loader into a local
+    Copies the freshly built .asi and the vendored ASI loader into every local
     High On Life install.
 
+.DESCRIPTION
+    Steam and Game Pass can both be installed at once, and they are different
+    binaries: Oregon\Binaries\Win64\Oregon-Win64-Shipping.exe against
+    Oregon\Binaries\WinGDK\Oregon-WinGDK-Shipping.exe. Deploying to only the
+    first one found is the quiet failure this iterates to avoid - you test a
+    change, it does not appear, and the reason is that the copy you launched
+    was never written to.
+
+    Both builds statically import WINMM.dll, so the loader rename is the same
+    for each.
+
 .PARAMETER GamePath
-    Install root to deploy into. Omitted, the game is located the same way
-    install.cmd locates it.
+    Deploy into this install root only, instead of every detected one.
 #>
 [CmdletBinding()]
 param([Parameter(Position = 0)][string]$GamePath)
@@ -36,38 +46,63 @@ if (-not $catalog.ContainsKey($gameId)) {
 }
 $config = $catalog[$gameId]
 
-# A path passed on the command line wins over detection, exactly as it does
-# for install.cmd's positional argument.
+# Which executable a given root holds depends on the store it came from, so the
+# relpath is resolved per install rather than once.
+function Get-InstallDescriptor {
+    param([string]$Path)
+
+    $isXbox = Test-IsXboxPath -Config $config -Path $Path
+    $relpath = if ($isXbox -and $config.ContainsKey('XboxExecutable') -and $config.XboxExecutable) {
+        $config.XboxExecutable
+    } else {
+        $config.Executable
+    }
+    return [pscustomobject]@{
+        Label      = if ($isXbox) { 'Game Pass' } else { 'Steam' }
+        Root       = $Path
+        ExeRelpath = $relpath
+    }
+}
+
 if ($GamePath) {
     if (-not (Test-Path -LiteralPath $GamePath -PathType Container)) {
         Write-Host "ERROR: supplied game path is not a directory: $GamePath" -ForegroundColor Red
         exit 1
     }
+    $installs = @(Get-InstallDescriptor -Path $GamePath)
 } else {
-    $GamePath = Find-GamePath -Config $config
+    $installs = @(Find-AllGamePaths -Config $config | ForEach-Object { Get-InstallDescriptor -Path $_ })
 }
-if (-not $GamePath) {
-    Write-Host 'ERROR: High On Life install not found. Set HIGH_ON_LIFE_PATH or pass the path as the first argument.' -ForegroundColor Red
+
+if ($installs.Count -eq 0) {
+    Write-Host 'ERROR: no High On Life install found (Steam or Game Pass). Set HIGH_ON_LIFE_PATH or pass the path as the first argument.' -ForegroundColor Red
     exit 1
 }
 
-$exe = Join-Path $GamePath $config.Executable
-if (-not (Test-Path $exe)) {
-    Write-Host "ERROR: game exe not found at $exe." -ForegroundColor Red
-    exit 1
+foreach ($install in $installs) {
+    $exe = Join-Path $install.Root $install.ExeRelpath
+    if (-not (Test-Path $exe)) {
+        Write-Host "ERROR: game exe not found at $exe." -ForegroundColor Red
+        exit 1
+    }
+    $exeDir = Split-Path $exe
+
+    Write-Host ''
+    Write-Host "=== $($install.Label): $exeDir ===" -ForegroundColor Cyan
+
+    # ASI_LOADER_NAME in install.cmd is winmm.dll, which both the Win64 and the
+    # WinGDK shipping exe statically import. The vendored artifact ships under
+    # its upstream name and is renamed on the way in, the same rename the
+    # installer performs.
+    $loader = Join-Path $exeDir 'winmm.dll'
+    if (-not (Test-Path $loader)) {
+        Copy-Item (Join-Path $root 'vendor/ultimate-asi-loader/dinput8.dll') $loader -Force
+        Write-Host '  Deployed Ultimate ASI Loader -> winmm.dll' -ForegroundColor Green
+    }
+
+    Copy-Item $asi (Join-Path $exeDir 'HighOnLifeHeadTracking.asi') -Force
+    Write-Host '  Deployed HighOnLifeHeadTracking.asi' -ForegroundColor Green
 }
-$exeDir = Split-Path $exe
 
-Write-Host "Deploying to $exeDir" -ForegroundColor Cyan
-
-# ASI_LOADER_NAME in install.cmd is winmm.dll, which Oregon-Win64-Shipping.exe
-# statically imports. The vendored artifact ships under its upstream name and
-# is renamed on the way in, the same rename the installer performs.
-$loader = Join-Path $exeDir 'winmm.dll'
-if (-not (Test-Path $loader)) {
-    Copy-Item (Join-Path $root 'vendor/ultimate-asi-loader/dinput8.dll') $loader -Force
-    Write-Host '  Deployed Ultimate ASI Loader -> winmm.dll' -ForegroundColor Green
-}
-
-Copy-Item $asi (Join-Path $exeDir 'HighOnLifeHeadTracking.asi') -Force
-Write-Host "Deployed HighOnLifeHeadTracking.asi to $exeDir" -ForegroundColor Green
+Write-Host ''
+Write-Host "Deployed to $($installs.Count) install(s)." -ForegroundColor Green

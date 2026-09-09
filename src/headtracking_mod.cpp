@@ -157,7 +157,8 @@ bool SelectBuildProfile(HMODULE host) {
             return false;
         case builds::MatchResult::HostOlder:
             Log::Line("build-check: this game build is OLDER than the profile - let "
-                      "Steam finish updating. Staying dormant; game runs vanilla.");
+                      "your store finish updating the game. Staying dormant; game "
+                      "runs vanilla.");
             return false;
         case builds::MatchResult::HostDiffers:
             Log::Line("build-check: same build date but a different EXE - this mod "

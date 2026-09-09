@@ -16,12 +16,20 @@ namespace hol_ht::builds {
 // the top of kKnownProfiles) without removing the old one. Users on the
 // un-patched build still match their old profile by PE fingerprint.
 extern const BuildProfile kSteamProfile_20231025;
+extern const BuildProfile kGdkProfile_20231025;
 
 namespace {
 
 // Newest-first. The first entry is the "primary" used to label newer/older when
 // no profile matches.
-constexpr std::array<const BuildProfile*, 1> kKnownProfiles = {
+//
+// The two 2023-10-25 builds are the Steam and Game Pass links of the same
+// release, three hours apart, so "newest" here is decided by TimeDateStamp like
+// anywhere else and the Game Pass one happens to sit on top. A user on either
+// store matches their own profile by fingerprint; the ordering only affects the
+// wording of the log line when neither matches.
+constexpr std::array<const BuildProfile*, 2> kKnownProfiles = {
+    &kGdkProfile_20231025,
     &kSteamProfile_20231025,
 };
 

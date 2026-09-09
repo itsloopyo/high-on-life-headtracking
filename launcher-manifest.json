@@ -9,8 +9,8 @@
   "delivery_mode": "manifest",
 
   "files": [
-    { "source": "vendor/ultimate-asi-loader/dinput8.dll", "target": "Oregon/Binaries/Win64/winmm.dll" },
-    { "source": "plugins/HighOnLifeHeadTracking.asi", "target": "Oregon/Binaries/Win64/HighOnLifeHeadTracking.asi" }
+    { "source": "vendor/ultimate-asi-loader/dinput8.dll", "target": "winmm.dll", "anchor": "exe_dir" },
+    { "source": "plugins/HighOnLifeHeadTracking.asi", "target": "HighOnLifeHeadTracking.asi", "anchor": "exe_dir" }
   ],
 
   "runtime_requirements": [],

@@ -66,6 +66,7 @@ set(MOD_SOURCES
     src/rva_hook.cpp
     src/builds/build_registry.cpp
     src/builds/steam_offsets.cpp
+    src/builds/gdk_offsets.cpp
 )
 
 add_library(HighOnLifeHeadTracking SHARED ${MOD_SOURCES})
