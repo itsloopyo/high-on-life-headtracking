@@ -8,6 +8,7 @@
 #include "ads_state.h"
 #include "logging.h"
 #include "mod_hotkeys.h"
+#include "pose_shaping.h"
 
 #include "cameraunlock/time/frame_clock.h"
 
@@ -19,33 +20,43 @@ cameraunlock::time::FrameClock g_frameClock;
 
 FramePose g_framePose;
 
-// The ADS transition and the pose the sights came up on. Both live on the game
-// thread with the frame pose above, and both are dropped on every suppressed
-// frame so the next aim re-enters cleanly.
-AdsFade g_adsFade;
-AdsEntryPose g_adsEntry;
+// The lean fade and the zoom reference live on the game thread with the frame
+// pose above.
+AdsFade g_leanFade;
+ZoomReference g_zoom;
 
-// One line the first time the sights come up in each mode, naming what that mode
-// does. This is what a player's log shows when they report that aiming does
-// something they did not expect.
-//
-// Not once per aim. This is a shooter: a line each way on every edge is a pair
-// of lines every few seconds of combat, which buries the build check and the
-// hook lines the log exists for. The live pair is already in the 30s heartbeat
-// (`ads=aiming/mode`), so an ongoing state is readable there instead.
-void LogFirstAdsEntry(bool aiming, AdsMode mode) {
-    if (!aiming) return;
-    static unsigned s_logged = 0;
-    const unsigned bit = 1u << static_cast<unsigned>(mode);
-    if (s_logged & bit) return;
-    s_logged |= bit;
-    // Two slots, so this asks core's named rule rather than enumerating the enum
-    // - which carries a third value this mod does not offer (ads.h).
-    if (AdsSuspendsTracking(mode)) {
-        Log::Line("ads: sights up - head tracking paused, view settling onto the aim");
-    } else {
-        Log::Line("ads: sights up - view settling onto the aim, head tracking carries on "
-                  "from there, with the game's own crosshair on the point the shot hits");
+float g_lastFovDeg = 0.0f;
+
+void LogZoomTerms(const char* when, float fovDeg, float zoom) {
+    Log::Line("zoom (%s): fov=%.2f base=%.2f (horizontal degrees, both FMinimalViewInfo::FOV) "
+              "tan(fov/2)=%.4f tan(base/2)=%.4f factor=%.4f",
+              when, fovDeg, g_zoom.BaseDeg(), ZoomReference::TanHalf(fovDeg),
+              ZoomReference::TanHalf(g_zoom.BaseDeg()), zoom);
+}
+
+// Every term once at the hip, on the first gameplay frame whether or not a
+// tracker is sending, where the factor has to read 1.0000. And once with the
+// sights up and the FOV no longer moving, which is the number that says what
+// the game's aim zoom is.
+void LogZoomOnce(bool gameplay, bool aiming, float leanScale, float fovDeg, float zoom) {
+    static bool s_hipLogged = false;
+    static bool s_aimLogged = false;
+    static bool s_unreadableLogged = false;
+    if (!gameplay) return;
+    if (!(fovDeg > 0.0f)) {
+        if (!s_unreadableLogged) {
+            s_unreadableLogged = true;
+            Log::Line("zoom: the view's FOV could not be read - no zoom compensation");
+        }
+        return;
+    }
+    if (!aiming && !s_hipLogged) {
+        s_hipLogged = true;
+        LogZoomTerms("hip", fovDeg, zoom);
+    }
+    if (aiming && leanScale == 0.0f && fovDeg == g_lastFovDeg && !s_aimLogged) {
+        s_aimLogged = true;
+        LogZoomTerms("sights up", fovDeg, zoom);
     }
 }
 
@@ -53,7 +64,7 @@ void LogFirstAdsEntry(bool aiming, AdsMode mode) {
 
 const FramePose& Advance(std::uint64_t frame, std::uintptr_t controller,
                          game_state::Phase phase, Session& session,
-                         bool trackingEnabled, AdsMode adsMode) {
+                         bool trackingEnabled, float renderFovDeg) {
     if (frame == g_framePose.Frame) return g_framePose;
 
     g_framePose = FramePose{};
@@ -72,47 +83,41 @@ const FramePose& Advance(std::uint64_t frame, std::uintptr_t controller,
     const bool havePosition = updated && session.GetPositionOffset(offX, offY, offZ);
 
     // Polled from the game's own flag every frame, never latched on an edge, so
-    // an exit that never arrives heals on the next frame instead of stranding
-    // the player in ADS behaviour.
+    // an exit that never arrives heals on the next frame.
     const bool aiming = ads_state::IsAimingDownSights(controller);
     const TrackingState state = DecideTracking(
-        phase, trackingEnabled, live || havePosition, aiming, adsMode);
+        phase, trackingEnabled, live || havePosition, aiming);
     g_framePose.Verdict = state.verdict;
     g_framePose.Aiming = state.aiming;
 
-    if (!PoseApplies(state.verdict)) {
-        // Menu, cinematic, master toggle, dead tracker: drop the transition and
-        // the pose the sights came up on, so the next aim re-enters from where
-        // the head is then rather than against a pose from before the
-        // suppression.
-        g_adsFade.Reset();
-        g_adsEntry.Reset();
-        return g_framePose;
-    }
+    const bool applies = PoseApplies(state.verdict);
+    if (!applies) g_leanFade.Reset();
+    const float leanScale = applies ? g_leanFade.Update(state.aiming, GetTickCount64()) : 1.0f;
 
-    // Raising the sights hands the view back to the gun: the head pose eases out
-    // over a fraction of a second and the frame settles onto the aim, which is
-    // where the crosshair already was. All three modes make that same swing and
-    // differ in where the fade lands - nothing in `paused`, the entry-relative
-    // pose in the other two. Roll is in neither fade; see BlendAdsPose.
-    //
-    // Both are asked in every mode, so the entry pose is dropped when the weapon
-    // comes down whichever mode was live while it was up, and a mode cycled
-    // mid-aim takes effect on that aim.
-    LogFirstAdsEntry(state.aiming, adsMode);
-    const float scale = g_adsFade.Update(state.aiming, GetTickCount64());
-    const AdsEntryPose::Pose absolute{ pitch, yaw, roll, offX, offY, offZ };
-    const AdsEntryPose::Pose relative = g_adsEntry.Relative(state.aiming, live, absolute);
-    const AdsEntryPose::Pose blended = BlendAdsPose(adsMode, scale, absolute, relative);
+    // The zoom runs on every gameplay frame, tracker or not, so its terms are in
+    // the log before anyone has to connect one.
+    const bool gameplay = game_state::IsGameplay(phase);
+    if (!gameplay) g_zoom.Reset();
+    const float zoom = gameplay ? g_zoom.Update(renderFovDeg, !aiming && leanScale == 1.0f) : 1.0f;
+    LogZoomOnce(gameplay, aiming, leanScale, renderFovDeg, zoom);
+    g_lastFovDeg = renderFovDeg;
+    g_framePose.Zoom = zoom;
+
+    if (!applies) return g_framePose;
+
+    ShapedPose raw;
+    raw.yaw = yaw; raw.pitch = pitch; raw.roll = roll;
+    raw.x = offX; raw.y = offY; raw.z = offZ;
+    const ShapedPose shaped = ShapePose(raw, leanScale, zoom);
 
     g_framePose.HasRotation = live;
     g_framePose.HasPosition = havePosition;
-    g_framePose.Yaw = blended.yaw;
-    g_framePose.Pitch = blended.pitch;
-    g_framePose.Roll = blended.roll;
-    g_framePose.OffX = blended.x;
-    g_framePose.OffY = blended.y;
-    g_framePose.OffZ = blended.z;
+    g_framePose.Yaw = shaped.yaw;
+    g_framePose.Pitch = shaped.pitch;
+    g_framePose.Roll = shaped.roll;
+    g_framePose.OffX = shaped.x;
+    g_framePose.OffY = shaped.y;
+    g_framePose.OffZ = shaped.z;
     return g_framePose;
 }
 

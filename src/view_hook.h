@@ -5,7 +5,6 @@
 
 #include <cstdint>
 
-#include "ads.h"
 #include "config.h"
 #include "session.h"
 
@@ -35,11 +34,6 @@ void SetTrackingEnabled(bool enabled);
 // local yaw (quaternion post-multiply, leans on pitched turns).
 bool WorldSpaceYaw();
 void SetWorldSpaceYaw(bool worldSpaceYaw);
-
-// What head tracking does while the sights are up. Read once per frame by the
-// hook, so a mode cycled mid-aim takes effect on that aim rather than the next.
-AdsMode GetAdsMode();
-void SetAdsMode(AdsMode mode);
 
 // The engine's game-thread frame number, or the hook's own call count on a
 // build profile with no GFrameCounter. Every consumer of a frame's view sees

@@ -39,10 +39,6 @@ constexpr float kMaxPositionLimitM = 0.5f;
 constexpr int kMinVirtualKey = 0x01;
 constexpr int kMaxVirtualKey = 0xFE;
 
-// Held from Load() so SaveAdsMode() can write back to the same file the player
-// edited, rather than guessing at the game directory a second time.
-std::string g_iniPath;
-
 std::string IniPath(const std::string& exe_dir) {
     return exe_dir + "\\" + kIniName;
 }
@@ -91,10 +87,8 @@ int ReadVirtualKey(const cameraunlock::IniReader& ini, const char* key, int fall
 }  // namespace
 
 void Load(const std::string& exe_dir, Config& out) {
-    g_iniPath = IniPath(exe_dir);
-
     cameraunlock::IniReader ini;
-    if (!ini.Open(g_iniPath)) {
+    if (!ini.Open(IniPath(exe_dir))) {
         Log::Line("config: no %s next to the game exe - using defaults", kIniName);
         return;
     }
@@ -147,21 +141,11 @@ void Load(const std::string& exe_dir, Config& out) {
     out.limit_z_back = ReadClampedFloat(ini, "Position", "LimitZBack", out.limit_z_back,
         kMinPositionLimitM, kMaxPositionLimitM);
 
-    // Two slots here, so `marker` must not resolve to anything: a file written
-    // by a three-slot sibling mod, or by a release of this one from before the
-    // game's own ADS reticle was confirmed (ads.h), otherwise selects a mode
-    // that does not exist. ParseAdsMode lands it on the default instead.
-    out.ads_mode = ParseAdsMode(
-        ini.ReadString("View", "AdsMode", AdsModeValue(kDefaultAdsMode)).c_str(),
-        /*allowMarker=*/false);
-
     out.yaw_mode_key = ReadVirtualKey(ini, "YawMode", out.yaw_mode_key);
-    out.ads_mode_key = ReadVirtualKey(ini, "AdsMode", out.ads_mode_key);
 
     out.aim_probe = ini.ReadBool("Dev", "AimProbe", out.aim_probe);
 
-    Log::Line("config: %s loaded (port=%d adsMode=%s)", kIniName, out.udp_port,
-              AdsModeValue(out.ads_mode));
+    Log::Line("config: %s loaded (port=%d)", kIniName, out.udp_port);
 }
 
 void WriteDefaultIfMissing(const std::string& exe_dir) {
@@ -228,19 +212,10 @@ void WriteDefaultIfMissing(const std::string& exe_dir) {
         "LimitZ=%.2f\r\n"
         "LimitZBack=%.2f\r\n"
         "\r\n"
-        "[View]\r\n"
-        "; What head tracking does while the sights are up. Cycled in game with\r\n"
-        "; Insert or Ctrl+Shift+U, and saved back here when you do.\r\n"
-        ";   paused   - tracking stands down for the aim (default, stock ADS)\r\n"
-        ";   tracked  - tracking carries on; the game's own crosshair stays on\r\n"
-        ";              the point your shot will hit\r\n"
-        "AdsMode=%s\r\n"
-        "\r\n"
         "[Hotkeys]\r\n"
         "; Virtual-key codes. The Ctrl+Shift chords do the same jobs and are not\r\n"
         "; configurable.\r\n"
         "YawMode=0x%02X\r\n"
-        "AdsMode=0x%02X\r\n"
         "\r\n"
         "[Dev]\r\n"
         "; Logs how far away the world point is that the crosshair is drawn from.\r\n"
@@ -260,20 +235,10 @@ void WriteDefaultIfMissing(const std::string& exe_dir) {
         d.position_sensitivity_z,
         d.limit_x, d.limit_y, d.limit_y_down,
         d.limit_z, d.limit_z_back,
-        AdsModeValue(kDefaultAdsMode),
-        d.yaw_mode_key, d.ads_mode_key,
+        d.yaw_mode_key,
         d.aim_probe ? "true" : "false");
     std::fclose(f);
     Log::Line("config: wrote default %s", path.c_str());
-}
-
-void SaveAdsMode(AdsMode mode) {
-    if (g_iniPath.empty()) return;
-    if (!WritePrivateProfileStringA("View", "AdsMode", AdsModeValue(mode), g_iniPath.c_str())) {
-        Log::Line("config: could not save AdsMode to %s (error %lu) - the setting applies for "
-                  "this session but will not survive a restart",
-                  g_iniPath.c_str(), GetLastError());
-    }
 }
 
 }  // namespace hol_ht::config

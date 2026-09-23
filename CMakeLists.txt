@@ -128,11 +128,11 @@ if(HOL_BUILD_TESTS)
         SOURCES tests/config_tests.cpp src/config.cpp
         LIBS cameraunlock)
 
-    # The aim-down-sights behaviour, in two suites the shared ADS spec asks
-    # every mod for. Both are header-only maths - no hooks, no game, no Windows
-    # machinery - so they run on a machine with no copy of High On Life.
-    hol_add_test(hol_ads_pose_tests SOURCES tests/ads_pose_tests.cpp)
-    hol_add_test(hol_ads_gate_tests SOURCES tests/ads_gate_tests.cpp)
+    # The lean fade, the zoom and the tracking gate. Header-only maths - no
+    # hooks, no game, no Windows machinery - so they run on a machine with no
+    # copy of High On Life.
+    hol_add_test(hol_pose_shaping_tests SOURCES tests/pose_shaping_tests.cpp)
+    hol_add_test(hol_tracking_gate_tests SOURCES tests/tracking_gate_tests.cpp)
 
     # The gate between head movement and the game's own decisions. Its matching
     # half is pure, so a fake module range and a few fabricated frames exercise

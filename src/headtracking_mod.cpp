@@ -256,9 +256,9 @@ DWORD WINAPI BootstrapThread(LPVOID) {
     hotkeys::Register(g_config);
 
     Log::Line("init complete. End=toggle PageUp=trackingmode VK 0x%02X=yawmode (%s) "
-              "VK 0x%02X=adsmode (chords Ctrl+Shift+Y/G/H/U). UDP %d: %s.",
+              "(chords Ctrl+Shift+Y/G/H). UDP %d: %s.",
         g_config.yaw_mode_key, g_config.world_space_yaw ? "world" : "local",
-        g_config.ads_mode_key, g_config.udp_port,
+        g_config.udp_port,
         g_receiver->IsRunning() ? "listening" : "waiting for the port to free up");
     return 0;
 }

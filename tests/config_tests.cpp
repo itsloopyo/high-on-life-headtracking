@@ -8,10 +8,8 @@
 // LimitY, so LimitY has to reach both bounds or the player gets asymmetric travel
 // with nothing in the log saying why.
 //
-// AdsMode names a slot in the fleet-wide cycle, and an unrecognised value has to
-// land on the default rather than on whichever branch happens to be last - a
-// player who typos it must not end up with head tracking through their sights
-// that they did not ask for.
+// An INI written by an older release still carries the retired AdsMode keys,
+// and has to load without complaint and without them changing anything.
 
 #include <cstdio>
 #include <string>
@@ -73,28 +71,12 @@ void AnExplicitLimitYDownStillWins() {
     CHECK_LIMIT(cfg.limit_y_down, 0.05f, "an explicit LimitYDown overrides the mirrored value");
 }
 
-void EveryAdsModeValueRoundTripsAndATypoFallsBackToTheDefault() {
-    hol_ht::Config tracked;
-    hol_ht::config::Load(WriteIni("ads_tracked", "[View]\nAdsMode=tracked\n"), tracked);
-    CHECK_MSG(tracked.ads_mode == hol_ht::AdsMode::Tracked, "AdsMode=tracked is read as tracked");
-
-    hol_ht::Config paused;
-    hol_ht::config::Load(WriteIni("ads_paused", "[View]\nAdsMode=paused\n"), paused);
-    CHECK_MSG(paused.ads_mode == hol_ht::AdsMode::Paused, "AdsMode=paused is read as paused");
-
-    // This mod ships two slots, so `marker` is not one of its values. A file
-    // carrying it - written by a three-slot sibling, or by a release of this mod
-    // from before the game's own ADS reticle was confirmed - must land on the
-    // default rather than switching head tracking on through the sights.
-    hol_ht::Config marker;
-    hol_ht::config::Load(WriteIni("ads_marker", "[View]\nAdsMode=marker\n"), marker);
-    CHECK_MSG(marker.ads_mode == hol_ht::kDefaultAdsMode,
-              "AdsMode=marker is not a value this mod offers and falls back to the default");
-
-    hol_ht::Config typo;
-    hol_ht::config::Load(WriteIni("ads_typo", "[View]\nAdsMode=trakced\n"), typo);
-    CHECK_MSG(typo.ads_mode == hol_ht::kDefaultAdsMode,
-              "an unrecognised AdsMode lands on the default rather than the last branch");
+void AnOldIniCarryingTheRetiredAdsKeysLoadsCleanly() {
+    hol_ht::Config cfg;
+    hol_ht::config::Load(WriteIni("ads_retired",
+        "[View]\nAdsMode=tracked\n[Hotkeys]\nYawMode=0x2E\nAdsMode=0x2D\n"), cfg);
+    CHECK_MSG(cfg.yaw_mode_key == 0x2E, "the keys around the retired ones are still read");
+    CHECK_MSG(cfg.udp_port == hol_ht::Config{}.udp_port, "nothing else moves off its default");
 }
 
 // A hotkey is the third silent one: a virtual-key code outside 0x01-0xFE binds
@@ -102,11 +84,9 @@ void EveryAdsModeValueRoundTripsAndATypoFallsBackToTheDefault() {
 // nothing on screen says why.
 void AnImpossibleVirtualKeyFallsBackToTheDefault() {
     hol_ht::Config bad;
-    hol_ht::config::Load(WriteIni("vk_bad", "[Hotkeys]\nYawMode=0x999\nAdsMode=0\n"), bad);
+    hol_ht::config::Load(WriteIni("vk_bad", "[Hotkeys]\nYawMode=0x999\n"), bad);
     CHECK_MSG(bad.yaw_mode_key == hol_ht::Config{}.yaw_mode_key,
               "a YawMode past 0xFE falls back to the default key");
-    CHECK_MSG(bad.ads_mode_key == hol_ht::Config{}.ads_mode_key,
-              "an AdsMode of 0x00 falls back to the default key");
 
     hol_ht::Config good;
     hol_ht::config::Load(WriteIni("vk_good", "[Hotkeys]\nYawMode=0x2E\n"), good);
@@ -158,9 +138,8 @@ void WriteDefaultLeavesAnExistingIniAlone() {
                 "an INI that already exists keeps the value the player put in it");
 }
 
-// The generated default INI must state core's actual limit_y_down default, and
-// the AdsMode slot the mod actually starts in - not literals that can drift from
-// them silently.
+// The generated default INI must state core's actual limit_y_down default, not
+// a literal that can drift from it silently.
 void WrittenDefaultIniMatchesTheCodeItDocuments() {
     char temp[MAX_PATH] = {};
     GetTempPathA(MAX_PATH, temp);
@@ -176,8 +155,6 @@ void WrittenDefaultIniMatchesTheCodeItDocuments() {
     hol_ht::config::Load(dir, cfg);
     CHECK_LIMIT(cfg.limit_y_down, cameraunlock::PositionSettings{}.limit_y_down,
                 "the written default INI's LimitYDown matches core's PositionSettings default");
-    CHECK_MSG(cfg.ads_mode == hol_ht::kDefaultAdsMode,
-              "the written default INI's AdsMode matches the mod's default slot");
 }
 
 }  // namespace
@@ -185,7 +162,7 @@ void WrittenDefaultIniMatchesTheCodeItDocuments() {
 int main() {
     LimitYReachesBothBoundsWhenLimitYDownIsAbsent();
     AnExplicitLimitYDownStillWins();
-    EveryAdsModeValueRoundTripsAndATypoFallsBackToTheDefault();
+    AnOldIniCarryingTheRetiredAdsKeysLoadsCleanly();
     AnImpossibleVirtualKeyFallsBackToTheDefault();
     ANonFiniteFloatFallsBackToTheDefault();
     WriteDefaultLeavesAnExistingIniAlone();

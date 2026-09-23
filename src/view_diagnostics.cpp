@@ -40,18 +40,19 @@ const char* UdpPortState(const cameraunlock::UdpReceiver* receiver) {
 
 }  // namespace
 
-void ReadRenderFov(const ue4::FVector3f* outLocation, const ue4::FRotator3f* outRotation) {
+float ReadRenderFov(const ue4::FVector3f* outLocation, const ue4::FRotator3f* outRotation) {
     const auto& mvi = Offsets().MinimalViewInfoLayout;
     const auto locAddr = reinterpret_cast<std::uintptr_t>(outLocation);
     const auto rotAddr = reinterpret_cast<std::uintptr_t>(outRotation);
-    if (rotAddr - locAddr != mvi.kRotationStride) return;
+    if (rotAddr - locAddr != mvi.kRotationStride) return 0.0f;
 
     float fov = 0.0f;
-    if (!ue::SafeReadFloat(locAddr + mvi.kFovOffset, fov)) return;
+    if (!ue::SafeReadFloat(locAddr + mvi.kFovOffset, fov)) return 0.0f;
     // Phrased as a range test rather than its negation so a NaN, which fails
     // every comparison, is rejected instead of stored.
-    if (!(fov >= kMinPlausibleFov && fov <= kMaxPlausibleFov)) return;
+    if (!(fov >= kMinPlausibleFov && fov <= kMaxPlausibleFov)) return 0.0f;
     g_renderFov.store(fov, std::memory_order_relaxed);
+    return fov;
 }
 
 bool HeartbeatDue(std::uint64_t calls) {
@@ -69,7 +70,7 @@ void LogHeartbeat(const HeartbeatFields& fields) {
 
     Log::Line("heartbeat calls=%llu injected=%llu enabled=%s state=%s drawing=%s "
               "udpPort=%s udpData=%s raw=(Y=%.2f P=%.2f R=%.2f) fov=%.1f yawMode=%s "
-              "ads=%s/%s",
+              "ads=%s zoom=%.4f",
         static_cast<unsigned long long>(fields.calls),
         static_cast<unsigned long long>(fields.injected),
         fields.trackingEnabled ? "ON" : "OFF",
@@ -79,7 +80,7 @@ void LogHeartbeat(const HeartbeatFields& fields) {
         g_renderFov.load(std::memory_order_relaxed),
         fields.worldSpaceYaw ? "world" : "local",
         fields.aiming ? "aiming" : "hip",
-        AdsModeValue(fields.adsMode));
+        fields.zoom);
 }
 
 void LogPoseDetail(const ue::FRotator& clean, const frame_pose::FramePose& pose,

@@ -45,7 +45,6 @@
 
 #include <intrin.h>
 
-#include "ads.h"
 #include "builds/build_registry.h"
 #include "camera_boundary.h"
 #include "frame_pose.h"
@@ -81,7 +80,6 @@ Dependencies g_deps{};
 
 std::atomic<bool> g_trackingEnabled{true};
 std::atomic<bool> g_worldSpaceYaw{true};
-std::atomic<AdsMode> g_adsMode{kDefaultAdsMode};
 
 GetPlayerViewPoint_t g_origGetPlayerViewPoint = nullptr;
 std::atomic<std::uint64_t> g_hookCallCount{0};
@@ -101,11 +99,12 @@ std::uint64_t CurrentFrame() {
 std::atomic<bool>  g_cleanValid{false};
 std::atomic<float> g_cleanX{0.0f}, g_cleanY{0.0f}, g_cleanZ{0.0f};
 
-// The aiming flag is whatever Advance() last settled on, which on the drawing
-// path is the previous frame's - the heartbeat is written before this frame's
-// pose is walked, and a line every thirty seconds has no use for the difference.
+// The aiming flag and the zoom are whatever Advance() last settled on, which on
+// the drawing path is the previous frame's - the heartbeat is written before
+// this frame's pose is walked, and a line every thirty seconds has no use for
+// the difference.
 view_diag::HeartbeatFields Heartbeat(std::uint64_t calls, game_state::Phase phase,
-                                     bool drawing, AdsMode mode) {
+                                     bool drawing) {
     view_diag::HeartbeatFields fields{};
     fields.calls = calls;
     fields.injected = g_injectCount.load(std::memory_order_relaxed);
@@ -115,7 +114,7 @@ view_diag::HeartbeatFields Heartbeat(std::uint64_t calls, game_state::Phase phas
     fields.receiver = g_deps.receiver;
     fields.worldSpaceYaw = g_worldSpaceYaw.load(std::memory_order_relaxed);
     fields.aiming = frame_pose::Latest().Aiming;
-    fields.adsMode = mode;
+    fields.zoom = frame_pose::Latest().Zoom;
     return fields;
 }
 
@@ -161,23 +160,20 @@ void __fastcall GetPlayerViewPoint_Hook(void* self, FVector3f* outLocation,
     // it waits until either the gate has passed or the heartbeat is actually due.
     if (retRva != Offsets().kViewPointCallerRva) {
         if (view_diag::HeartbeatDue(calls)) {
-            view_diag::LogHeartbeat(Heartbeat(calls, game_state::Classify(controller), false,
-                                              g_adsMode.load(std::memory_order_relaxed)));
+            view_diag::LogHeartbeat(Heartbeat(calls, game_state::Classify(controller), false));
         }
         return;
     }
 
     const game_state::Phase phase = game_state::Classify(controller);
-    const AdsMode mode = g_adsMode.load(std::memory_order_relaxed);
-
-    view_diag::ReadRenderFov(outLocation, outRotation);
+    const float renderFov = view_diag::ReadRenderFov(outLocation, outRotation);
 
     const bool drawing = presentation::CallerIsDrawing();
     if (!drawing) presentation::LogUnmatched();
 
     game_state::LogTransition(phase);
     if (view_diag::HeartbeatDue(calls))
-        view_diag::LogHeartbeat(Heartbeat(calls, phase, drawing, mode));
+        view_diag::LogHeartbeat(Heartbeat(calls, phase, drawing));
 
     g_cleanX.store(outLocation->X, std::memory_order_relaxed);
     g_cleanY.store(outLocation->Y, std::memory_order_relaxed);
@@ -185,11 +181,11 @@ void __fastcall GetPlayerViewPoint_Hook(void* self, FVector3f* outLocation,
     g_cleanValid.store(true, std::memory_order_relaxed);
 
     // Advanced once per engine frame, whether or not this particular query is a
-    // drawing one: the ADS transition has to run on every frame, and every
-    // consumer in a frame has to see the same pose.
+    // drawing one: the lean fade and the zoom reference have to run on every
+    // frame, and every consumer in a frame has to see the same pose.
     const FramePose& pose = frame_pose::Advance(
         CurrentFrame(), controller, phase, *g_deps.session,
-        g_trackingEnabled.load(std::memory_order_relaxed), mode);
+        g_trackingEnabled.load(std::memory_order_relaxed), renderFov);
 
     if (!drawing) return;
 
@@ -211,7 +207,6 @@ bool Install(const Dependencies& deps) {
     g_deps = deps;
     g_trackingEnabled.store(deps.config->enable_on_startup);
     g_worldSpaceYaw.store(deps.config->world_space_yaw);
-    g_adsMode.store(deps.config->ads_mode);
 
     presentation::Init(Offsets().kPresentationCallerRvas.data(),
                        Offsets().kPresentationCallerRvas.size(),
@@ -238,9 +233,6 @@ bool Install(const Dependencies& deps) {
     // An extra hook the profile may or may not have an RVA for, which says so in
     // the log and leaves the rest of the mod working either way.
     xs_camera::Install();
-
-    Log::Line("ads: %s (Insert or Ctrl+Shift+U cycles it)",
-              AdsModeValue(g_adsMode.load(std::memory_order_relaxed)));
     return true;
 }
 
@@ -249,9 +241,6 @@ void SetTrackingEnabled(bool enabled) { g_trackingEnabled.store(enabled); }
 
 bool WorldSpaceYaw() { return g_worldSpaceYaw.load(); }
 void SetWorldSpaceYaw(bool worldSpaceYaw) { g_worldSpaceYaw.store(worldSpaceYaw); }
-
-AdsMode GetAdsMode() { return g_adsMode.load(std::memory_order_relaxed); }
-void SetAdsMode(AdsMode mode) { g_adsMode.store(mode, std::memory_order_relaxed); }
 
 std::uint64_t CurrentFrameNumber() { return CurrentFrame(); }
 

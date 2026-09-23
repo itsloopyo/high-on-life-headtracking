@@ -5,8 +5,6 @@
 
 #include <string>
 
-#include "ads.h"
-
 #include "cameraunlock/data/position_settings.h"
 #include "cameraunlock/math/smoothing_utils.h"
 
@@ -51,21 +49,9 @@ struct Config {
     // off the rest of the time.
     bool aim_probe = false;
 
-    // What head tracking does while the sights are up. Validated against the two
-    // values this mod offers (ads.h); anything else - a typo, `marker` from a
-    // three-slot sibling, or a mode renamed since an older release wrote the
-    // file - lands on the default rather than on whichever branch happens to be
-    // last, so a player never ends up with head tracking through their sights
-    // that they did not ask for.
-    AdsMode ads_mode = kDefaultAdsMode;
-
     // Virtual-key code for the yaw-mode toggle. Ctrl+Shift+H does the same job
     // and is not configurable.
     int yaw_mode_key = 0x22;  // VK_NEXT (Page Down)
-
-    // Virtual-key code for the ADS-mode cycle. Ctrl+Shift+U does the same job
-    // and is not configurable.
-    int ads_mode_key = 0x2D;  // VK_INSERT
 };
 
 }  // namespace hol_ht
@@ -81,10 +67,5 @@ void Load(const std::string& exe_dir, Config& out);
 // Write a fully commented INI of the defaults, unless the player already has
 // one. Never overwrites, so a hand-edited file survives every launch.
 void WriteDefaultIfMissing(const std::string& exe_dir);
-
-// Write the ADS mode back to the INI, leaving every other key and every comment
-// in the file alone. The cycle key is the setting's other half, so a mode picked
-// mid-firefight has to survive the next launch.
-void SaveAdsMode(AdsMode mode);
 
 }  // namespace hol_ht::config

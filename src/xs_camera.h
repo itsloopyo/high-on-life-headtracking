@@ -38,9 +38,8 @@
 // capture untouched, and the player's view untouched with it.
 //
 // This is a hole waiting on one piece of work in cameraunlock-core, not a
-// judgement about the section. That same work fixes `marker` ADS mode, which
-// has never drawn a mark in this game for the same reason. The camera injection
-// is in git and every offset it needs is in .lab/NOTES.md.
+// judgement about the section. The camera injection is in git and every offset
+// it needs is in .lab/NOTES.md.
 namespace hol_ht::xs_camera {
 
 // Hook USceneCaptureComponent2D::SetCameraView, which is how the section is

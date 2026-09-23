@@ -7,12 +7,12 @@
 #include <cmath>
 #include <cstdint>
 
-#include "ads_gate.h"
 #include "builds/build_registry.h"
 #include "camera_boundary.h"
 #include "frame_pose.h"
 #include "logging.h"
 #include "rva_hook.h"
+#include "tracking_gate.h"
 #include "ue_types.h"
 #include "view_hook.h"
 #include "xs_widgets.h"

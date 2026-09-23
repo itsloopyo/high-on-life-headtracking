@@ -5,7 +5,6 @@
 
 #include <cstdint>
 
-#include "ads.h"
 #include "frame_pose.h"
 #include "game_state.h"
 #include "ue_types.h"
@@ -23,12 +22,11 @@
 namespace hol_ht::view_diag {
 
 // The FOV the frame is being drawn with, read from the FMinimalViewInfo the
-// consumer is filling in. Diagnostics only - the game has its own FOV setting,
-// so the mod has no business changing it - but a user reporting that the
-// crosshair sits wrong needs the log to say what the frame was drawn at, and
-// the stride test is the cheapest possible proof that the caller gate really
-// did land on an FMinimalViewInfo builder.
-void ReadRenderFov(const ue4::FVector3f* outLocation, const ue4::FRotator3f* outRotation);
+// consumer is filling in, or 0 when it cannot be read. The mod never changes it:
+// it is what the zoom compensation measures against (pose_shaping.h), and what
+// the heartbeat reports. The stride test is the cheapest possible proof that
+// the caller gate really did land on an FMinimalViewInfo builder.
+float ReadRenderFov(const ue4::FVector3f* outLocation, const ue4::FRotator3f* outRotation);
 
 struct HeartbeatFields {
     std::uint64_t calls;
@@ -39,7 +37,7 @@ struct HeartbeatFields {
     const cameraunlock::UdpReceiver* receiver;
     bool worldSpaceYaw;
     bool aiming;
-    AdsMode adsMode;
+    float zoom;
 };
 
 // True on the hook's first call and at most once per kHeartbeatMs after it,

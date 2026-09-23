@@ -85,7 +85,6 @@ Two equivalent binding sets, use whichever your keyboard has:
 | Toggle tracking | `End` | `Ctrl+Shift+Y` |
 | Cycle tracking mode | `Page Up` | `Ctrl+Shift+G` |
 | Toggle yaw mode (world / camera-local) | `Page Down` | `Ctrl+Shift+H` |
-| Cycle ADS mode | `Insert` | `Ctrl+Shift+U` |
 
 `Page Up` / `Ctrl+Shift+G` cycles tracking mode:
 
@@ -94,21 +93,14 @@ Two equivalent binding sets, use whichever your keyboard has:
 3. Rotational tracking disabled, positional tracking enabled
 4. Back to normal
 
-`Insert` / `Ctrl+Shift+U` cycles what happens when you aim down sights. Both
-modes start the same way, raising the sights swings the view onto the point the
-crosshair was marking so your shot lands where you had it lined up, and they
-differ in what happens for the rest of the aim:
+### Aiming down sights
 
-1. **Tracking paused** (default) - the game keeps the camera for as long as the
-   sights are up. The sight picture is exactly the game's, and turning or leaning
-   your head does nothing until you lower the weapon. Tilting it still rolls the
-   view, in both modes: a tilt does not move your eye off the barrel or the aim
-   off the middle of the frame, so there is nothing to hand back to the gun.
-2. **Tracking on** - head tracking carries on from the snapped position, and the
-   game's own crosshair stays on the point your shot will hit.
+Head tracking stays on while you aim. The weapon stays where your mouse or
+controller points it, so with your head turned it sits off to one side with its
+sights still lined up, and your rounds land where those sights point. Head
+movement is scaled to the zoom, so a scope does not magnify it.
 
-The choice is saved to `HeadTracking.ini`, so it survives a restart. Pressing the
-key writes the mode you switched to into the mod's log.
+Leaning eases out while the sights are up, because it would move your eye off them.
 
 ## Configuration
 
@@ -159,19 +151,10 @@ LimitYDown=0.20
 LimitZ=0.40
 LimitZBack=0.10
 
-[View]
-; What head tracking does while the sights are up. Cycled in game with
-; Insert or Ctrl+Shift+U, and saved back here when you do.
-;   paused   - tracking stands down for the aim (default, stock ADS)
-;   tracked  - tracking carries on; the game's own crosshair stays on
-;              the point your shot will hit
-AdsMode=paused
-
 [Hotkeys]
 ; Virtual-key codes. The Ctrl+Shift chords do the same jobs and are not
 ; configurable.
 YawMode=0x22
-AdsMode=0x2D
 
 [Dev]
 ; Logs how far away the world point is that the crosshair is drawn from.
@@ -201,6 +184,10 @@ Sensitivities are accepted between 0.1 and 3.0, smoothing between 0.0 and 1.0, p
 - If your tracker runs on this PC but sends to your LAN address rather than `127.0.0.1`, the mod classifies it as remote and applies the `Remote` smoothing value. Point the tracker at `127.0.0.1` to get the `Local` value instead.
 - Raise `Remote` in `[Smoothing]` for a phone on WiFi, or route the phone through OpenTrack so its filters clean up the feed.
 - Add filtering in your tracker. OpenTrack's accela filter and its curve mapping do this better than any setting here.
+
+**The weapon is off to one side when I aim down sights**
+
+- Your head is turned: the weapon stays on your aim and you are looking past it. Turn back to it, or move your aim to where you are looking.
 
 **Yaw feels wrong when looking up or down at extreme angles**
 
