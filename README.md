@@ -12,28 +12,35 @@ An unofficial head tracking mod for High On Life that moves the view with your h
 
 ## Requirements
 
-- A copy of High On Life on [Steam](https://store.steampowered.com/app/1583230/) or on PC Game Pass / the Microsoft Store. Two builds are supported: the Steam Win64 build of 2023-10-25, and the Game Pass WinGDK build of the same date (package 1.13.3652.0). The mod picks the right one by itself
+- A copy of High On Life on [Steam](https://store.steampowered.com/app/1583230/) or on Xbox Game Pass. Two builds are supported: the Steam Win64 build of 2023-10-25, and the Xbox Game Pass WinGDK build of the same date (package 1.13.3652.0). The mod picks the right one by itself
 - A tracking source: [OpenTrack](https://github.com/opentrack/opentrack) with a webcam, or any tracker that sends the OpenTrack UDP protocol. Not bundled
 - 64-bit Windows 10 or 11
 
 ## Installation
 
+### Lopari
+
+Download [Lopari](https://lopari.app), choose **High On Life**, and click
+**Play with head tracking**.
+
+### Standalone Installer
+
 1. Download the installer ZIP from the [releases page](https://github.com/itsloopyo/high-on-life-headtracking/releases).
 2. Extract it anywhere outside the game folder.
-3. Double-click `install.cmd`. It finds your copy of High On Life, on Steam or on Game Pass, deploys the mod and the Ultimate ASI Loader, and writes a state file so `uninstall.cmd` can remove exactly what it added.
+3. Double-click `install.cmd`. It finds your copy of High On Life, on Steam or on Xbox Game Pass, deploys the mod and the Ultimate ASI Loader, and writes a state file so `uninstall.cmd` can remove exactly what it added.
 4. Configure OpenTrack to output UDP to `127.0.0.1`, port `4242`.
 5. Launch the game.
 
 If the installer cannot find your game, point it at the folder yourself. Either set the environment variable `HIGH_ON_LIFE_PATH`, or pass the path as an argument. Give it the folder above `Oregon\`, not the folder holding the exe:
 
 - Steam: `install.cmd "D:\SteamLibrary\steamapps\common\HighOnLife"`
-- Game Pass: `install.cmd "D:\XboxGames\High on Life\Content"`
+- Xbox Game Pass: `install.cmd "D:\XboxGames\High on Life\Content"`
 
 Success looks like `HeadTracking.ini` and `HeadTracking.log` appearing next to the game exe on first launch, with the log carrying a `build-check: matched profile ...` line naming your build, a `GetPlayerViewPoint hooked at RVA ...` line, and an `init complete.` line naming the port.
 
 ### Manual Installation
 
-Mod managers do not deploy this mod. The payload has to sit next to the game exe, in `Oregon\Binaries\Win64\` on Steam or `Oregon\Binaries\WinGDK\` on Game Pass, and a mod manager deploys into one fixed subtree of the game folder that does not reach there. Vortex would report a successful install and nothing would load. There is no Nexus ZIP for that reason.
+Mod managers do not deploy this mod. The payload has to sit next to the game exe, in `Oregon\Binaries\Win64\` on Steam or `Oregon\Binaries\WinGDK\` on Xbox Game Pass, and a mod manager deploys into one fixed subtree of the game folder that does not reach there. Vortex would report a successful install and nothing would load. There is no Nexus ZIP for that reason.
 
 The installer ZIP holds `plugins\HighOnLifeHeadTracking.asi` and `vendor\ultimate-asi-loader\dinput8.dll`. Both go into the folder holding the game exe:
 
@@ -42,7 +49,7 @@ The installer ZIP holds `plugins\HighOnLifeHeadTracking.asi` and `vendor\ultimat
 
 That folder should then hold the game exe, `winmm.dll` and `HighOnLifeHeadTracking.asi` side by side. Nothing else in the ZIP belongs in the game folder.
 
-On Game Pass the game exe itself cannot be opened or copied, which is normal and is not a permissions problem you need to fix. The folder it sits in still accepts new files, which is all the mod needs.
+On Xbox Game Pass the game exe itself cannot be opened or copied, which is normal and is not a permissions problem you need to fix. The folder it sits in still accepts new files, which is all the mod needs.
 
 ## Setting Up OpenTrack
 
@@ -104,7 +111,7 @@ Leaning eases out while the sights are up, because it would move your eye off th
 
 ## Configuration
 
-`HeadTracking.ini` is written next to the game exe, in `Oregon\Binaries\Win64\` on Steam or `Oregon\Binaries\WinGDK\` on Game Pass, on first launch. It is read once at startup, so a restart applies your edits, and deleting it resets everything to the defaults below.
+`HeadTracking.ini` is written next to the game exe, in `Oregon\Binaries\Win64\` on Steam or `Oregon\Binaries\WinGDK\` on Xbox Game Pass, on first launch. It is read once at startup, so a restart applies your edits, and deleting it resets everything to the defaults below.
 
 ```ini
 ; High On Life Head Tracking
@@ -169,7 +176,7 @@ Sensitivities are accepted between 0.1 and 3.0, smoothing between 0.0 and 1.0, p
 
 **Mod not loading**
 
-- Check that `HeadTracking.log` exists next to the game exe (`Oregon-Win64-Shipping.exe` on Steam, `Oregon-WinGDK-Shipping.exe` on Game Pass). No log means the loader never loaded the mod: confirm `winmm.dll` is in that folder and is the file from `vendor\ultimate-asi-loader\`.
+- Check that `HeadTracking.log` exists next to the game exe (`Oregon-Win64-Shipping.exe` on Steam, `Oregon-WinGDK-Shipping.exe` on Xbox Game Pass). No log means the loader never loaded the mod: confirm `winmm.dll` is in that folder and is the file from `vendor\ultimate-asi-loader\`.
 - If the log says your game build is newer, older or modified, the mod has no profile for it and stays dormant, so no hooks are installed and the game runs vanilla. Check the releases page for a build that covers your version.
 - If you installed with a mod manager, that is the problem. See [Manual Installation](#manual-installation).
 
@@ -202,7 +209,7 @@ Download the new release and run `install.cmd` again. It overwrites the mod and 
 
 Run `uninstall.cmd`. It removes the mod DLL, the state file, and the mod's own `HeadTracking.ini` and logs. The Ultimate ASI Loader is only removed if the installer put it there; use `uninstall.cmd /force` to remove it anyway.
 
-By hand: delete `HighOnLifeHeadTracking.asi`, `winmm.dll`, `HeadTracking.ini`, `HeadTracking.log` and `HeadTracking.prev.log` from the folder holding the game exe (`Oregon\Binaries\Win64\` on Steam, `Oregon\Binaries\WinGDK\` on Game Pass).
+By hand: delete `HighOnLifeHeadTracking.asi`, `winmm.dll`, `HeadTracking.ini`, `HeadTracking.log` and `HeadTracking.prev.log` from the folder holding the game exe (`Oregon\Binaries\Win64\` on Steam, `Oregon\Binaries\WinGDK\` on Xbox Game Pass).
 
 ## Building from Source
 
