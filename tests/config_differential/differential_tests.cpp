@@ -268,15 +268,18 @@ bool SamePoseShaping(const PoseShaping& a, const PoseShaping& b) {
     return true;
 }
 
-// headtracking_mod.cpp ApplyConfigToSession, at c24cc5a and at the commit that
-// froze the reader alike: [Position] Enabled picks the startup mode and nothing
-// else.
+// Hand copied, not compiled from the published sources: the oracle library
+// exports only the reader. Copied from c24cc5a:src/headtracking_mod.cpp:72-74
+// (ApplyConfigToSession), which b597166:src/headtracking_mod.cpp:72-74 matches:
+// [Position] Enabled picks the startup mode and nothing else.
 int LegacyStartMode(bool position_enabled) {
     return static_cast<int>(position_enabled ? TrackingMode::RotationAndPosition : TrackingMode::RotationOnly);
 }
 
-// mod_hotkeys.cpp Register at the commit that froze the reader: End, Page Up and
-// the configured yaw key NavGuarded, the Y/G/H chords ChordGuarded.
+// Hand copied from b597166:src/mod_hotkeys.cpp:60-67 (Register), the commit the
+// reader was frozen at, and c24cc5a:src/mod_hotkeys.cpp:72-80 less its ADS
+// lines: End, Page Up and the configured yaw key NavGuarded, the Y/G/H chords
+// ChordGuarded.
 std::vector<Hotkey> LegacyHotkeys(int yaw_mode_key) {
     std::vector<Hotkey> keys = {
         {kToggle, 0x23, kPlain},      {kCycleMode, 0x21, kPlain},  {kYawMode, yaw_mode_key, kPlain},
@@ -296,7 +299,7 @@ OracleReading ReadOracle(const std::string& dir) {
     const hol_oracle::PublishedConfig c = hol_oracle::Load(dir);
     OracleReading r;
     r.observed.udp_port = c.udp_port;
-    // view_hook.cpp Install at c24cc5a.
+    // Hand copied from c24cc5a:src/view_hook.cpp:212-213 (Install).
     r.observed.start_enabled = c.enable_on_startup;
     r.observed.start_world_yaw = c.world_space_yaw;
     r.observed.start_mode = LegacyStartMode(c.position_enabled);
@@ -305,8 +308,8 @@ OracleReading ReadOracle(const std::string& dir) {
     const float limits[5] = {c.limit_x, c.limit_y, c.limit_y_down, c.limit_z, c.limit_z_back};
     std::copy(std::begin(limits), std::end(limits), r.observed.limits);
     r.observed.aim_probe = c.aim_probe;
-    // mod_hotkeys.cpp Register at c24cc5a: the frozen reader's set, plus the ADS
-    // cycle on its configured key and Ctrl+Shift+U.
+    // c24cc5a:src/mod_hotkeys.cpp:72-81 (Register): the frozen reader's set, plus
+    // the ADS cycle on its configured key (line 75) and Ctrl+Shift+U (line 81).
     r.observed.hotkeys = LegacyHotkeys(c.yaw_mode_key);
     r.observed.hotkeys.push_back({kAdsMode, c.ads_mode_key, kPlain});
     r.observed.hotkeys.push_back({kAdsMode, 0x55, kCtrlShift});
