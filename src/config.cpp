@@ -3,146 +3,99 @@
 
 #include "config.h"
 
-#include <cerrno>
-#include <cstdio>
+#include <functional>
+#include <memory>
 #include <string>
+#include <utility>
 
-#include <windows.h>
-
-#include "legacy_config/legacy_config.h"
+#include "legacy_config/legacy_import.h"
 #include "logging.h"
+
+#include "cameraunlock/config/value_codecs.h"
 
 namespace hol_ht::config {
 
 namespace {
 
-constexpr const char* kIniName = "HeadTracking.ini";
+namespace cfg = ::cameraunlock::config;
+using cfg::schema::Concept;
 
-std::string IniPath(const std::string& exe_dir) {
-    return exe_dir + "\\" + kIniName;
+constexpr const wchar_t* kIniName = L"HeadTracking.ini";
+
+// data/games.json's display_name for high-on-life.
+constexpr const char* kDisplayName = "High On Life";
+
+std::unique_ptr<cfg::ConfigOwner<Config>> g_owner;
+
+void Save(const char* rows, const std::function<void(Config&)>& change) {
+    const cfg::ConfigSaveResult result = g_owner->Save(change);
+    if (result.status == cfg::ConfigSaveStatus::Saved) return;
+    Log::Line("config: %s %s: %s", rows, cfg::ConfigSaveStatusName(result.status), result.reason.c_str());
+    for (const std::string& line : result.log) Log::Line("config: %s", line.c_str());
 }
 
 }  // namespace
 
-void Load(const std::string& exe_dir, Config& out) {
-    legacy::Config read;
-    legacy::Load(exe_dir, read);
-
-    out.udp_port = read.udp_port;
-    out.enable_on_startup = read.enable_on_startup;
-    out.world_space_yaw = read.world_space_yaw;
-    out.yaw_sensitivity = read.yaw_sensitivity;
-    out.pitch_sensitivity = read.pitch_sensitivity;
-    out.roll_sensitivity = read.roll_sensitivity;
-    out.invert_yaw = read.invert_yaw;
-    out.invert_pitch = read.invert_pitch;
-    out.invert_roll = read.invert_roll;
-    out.local_smoothing = read.local_smoothing;
-    out.remote_smoothing = read.remote_smoothing;
-    out.position_enabled = read.position_enabled;
-    out.position_sensitivity_x = read.position_sensitivity_x;
-    out.position_sensitivity_y = read.position_sensitivity_y;
-    out.position_sensitivity_z = read.position_sensitivity_z;
-    out.limit_x = read.limit_x;
-    out.limit_y = read.limit_y;
-    out.limit_y_down = read.limit_y_down;
-    out.limit_z = read.limit_z;
-    out.limit_z_back = read.limit_z_back;
-    out.aim_probe = read.aim_probe;
-    out.yaw_mode_key = read.yaw_mode_key;
+cfg::ConfigTable<Config> Table() {
+    cfg::ConfigTable<Config> table;
+    table.Concept<Concept::UdpPort>(&Config::udp_port)
+        .Concept<Concept::EnableOnStartup>(&Config::enable_on_startup)
+        .Concept<Concept::WorldSpaceYaw>(&Config::world_space_yaw)
+        .Writable()
+        .Concept<Concept::RotationEnabled>(&Config::rotation_enabled)
+        .Writable()
+        .Concept<Concept::LocalSmoothing>(&Config::local_smoothing)
+        .Concept<Concept::RemoteSmoothing>(&Config::remote_smoothing)
+        .Concept<Concept::PositionEnabled>(&Config::position_enabled)
+        .Writable()
+        .Concept<Concept::PositionLimitX>(&Config::limit_x)
+        .Concept<Concept::PositionLimitY>(&Config::limit_y)
+        .Concept<Concept::PositionLimitYDown>(&Config::limit_y_down)
+        .Concept<Concept::PositionLimitZ>(&Config::limit_z)
+        .Concept<Concept::PositionLimitZBack>(&Config::limit_z_back)
+        .Concept<Concept::ToggleKey>(&Config::toggle_key)
+        .Concept<Concept::CycleTrackingModeKey>(&Config::cycle_tracking_mode_key)
+        .Concept<Concept::YawModeKey>(&Config::yaw_mode_key)
+        .Local("Dev", "AimProbe", &Config::aim_probe, cfg::BoolCodec(),
+               "true: log the distance to the point the crosshair is drawn from. The game's aim\n"
+               "trace is working when that distance follows what the weapon points at.");
+    return table;
 }
 
-void WriteDefaultIfMissing(const std::string& exe_dir) {
-    const std::string path = IniPath(exe_dir);
+cfg::RenderHeader Header() {
+    cfg::RenderHeader header;
+    header.display_name = kDisplayName;
+    return header;
+}
 
-    // "x" is the C11 exclusive-create mode: the open FAILS if the file already
-    // exists, rather than truncating it. An attributes test followed by a "wb"
-    // open is the same intent with a window in it, and what falls into that
-    // window is the player's hand-edited settings - two copies of the game
-    // starting together, or a launcher writing the file while the first one
-    // boots, and every key is back at its default with nothing said.
-    const Config d{};
-    FILE* f = std::fopen(path.c_str(), "wbx");
-    if (!f) {
-        // EEXIST is the ordinary case on every launch after the first: the
-        // player already has an INI and it is left exactly as they wrote it.
-        if (errno == EEXIST) return;
-        Log::Line("config: could not write %s (errno %d) - defaults apply", path.c_str(), errno);
-        return;
-    }
+cfg::ConfigOwnerOptions<Config> OwnerOptions(const std::wstring& path) {
+    cfg::ConfigOwnerOptions<Config> options;
+    options.path = path;
+    options.table = Table();
+    options.import = legacy::Import();
+    options.header = Header();
+    return options;
+}
 
-    std::fprintf(f,
-        "; High On Life Head Tracking\r\n"
-        ";\r\n"
-        "; Centring is done in your tracker (OpenTrack's Center bind, SteamVR, or\r\n"
-        "; your phone app's CENTER button). The mod keeps no centre of its own.\r\n"
-        "\r\n"
-        "[Network]\r\n"
-        "Port=%d\r\n"
-        "\r\n"
-        "[General]\r\n"
-        "EnableOnStartup=%s\r\n"
-        "; Yaw about the world up-axis (true) keeps the horizon level on a pitched\r\n"
-        "; turn; camera-local yaw (false) leans it. Toggled in game with Page Down\r\n"
-        "; or Ctrl+Shift+H; the toggle is not written back here.\r\n"
-        "WorldSpaceYaw=%s\r\n"
-        "\r\n"
-        "[Sensitivity]\r\n"
-        "Yaw=%.2f\r\n"
-        "Pitch=%.2f\r\n"
-        "Roll=%.2f\r\n"
-        "\r\n"
-        "[Inversion]\r\n"
-        "Yaw=%s\r\n"
-        "Pitch=%s\r\n"
-        "Roll=%s\r\n"
-        "\r\n"
-        "[Smoothing]\r\n"
-        "; Local applies to a tracker sending from this machine over loopback;\r\n"
-        "; Remote applies to anything else, including a phone on WiFi and this\r\n"
-        "; machine's own LAN address. Both cover rotation and position.\r\n"
-        "Local=%.2f\r\n"
-        "Remote=%.2f\r\n"
-        "\r\n"
-        "[Position]\r\n"
-        "Enabled=%s\r\n"
-        "SensitivityX=%.2f\r\n"
-        "SensitivityY=%.2f\r\n"
-        "SensitivityZ=%.2f\r\n"
-        "; Metres. Z is asymmetric: more room to lean in than to pull back.\r\n"
-        "LimitX=%.2f\r\n"
-        "LimitY=%.2f\r\n"
-        "LimitYDown=%.2f\r\n"
-        "LimitZ=%.2f\r\n"
-        "LimitZBack=%.2f\r\n"
-        "\r\n"
-        "[Hotkeys]\r\n"
-        "; Virtual-key codes. The Ctrl+Shift chords do the same jobs and are not\r\n"
-        "; configurable.\r\n"
-        "YawMode=0x%02X\r\n"
-        "\r\n"
-        "[Dev]\r\n"
-        "; Logs how far away the world point is that the crosshair is drawn from.\r\n"
-        "; A number that tracks whatever the weapon is pointed at is the aim\r\n"
-        "; trace working; a constant is it not. Off otherwise.\r\n"
-        "AimProbe=%s\r\n",
-        d.udp_port,
-        d.enable_on_startup ? "true" : "false",
-        d.world_space_yaw ? "true" : "false",
-        d.yaw_sensitivity, d.pitch_sensitivity, d.roll_sensitivity,
-        d.invert_yaw ? "true" : "false",
-        d.invert_pitch ? "true" : "false",
-        d.invert_roll ? "true" : "false",
-        d.local_smoothing, d.remote_smoothing,
-        d.position_enabled ? "true" : "false",
-        d.position_sensitivity_x, d.position_sensitivity_y,
-        d.position_sensitivity_z,
-        d.limit_x, d.limit_y, d.limit_y_down,
-        d.limit_z, d.limit_z_back,
-        d.yaw_mode_key,
-        d.aim_probe ? "true" : "false");
-    std::fclose(f);
-    Log::Line("config: wrote default %s", path.c_str());
+Config Load(const std::wstring& exe_dir) {
+    g_owner = std::make_unique<cfg::ConfigOwner<Config>>(OwnerOptions(exe_dir + L"\\" + kIniName));
+    const cfg::ConfigLoadResult<Config> result = g_owner->Load();
+    for (const std::string& line : result.log) Log::Line("config: %s", line.c_str());
+    if (!result.reason.empty()) Log::Line("config: %s", result.reason.c_str());
+    Log::Line("config: %s", cfg::ConfigLoadStatusName(result.status));
+    return result.config;
+}
+
+void SaveWorldSpaceYaw(bool world_space_yaw) {
+    Save("[General] WorldSpaceYaw", [world_space_yaw](Config& c) { c.world_space_yaw = world_space_yaw; });
+}
+
+void SaveTrackingMode(cameraunlock::TrackingMode mode) {
+    const cameraunlock::TrackingModeChannels channels = cameraunlock::EncodeTrackingMode(mode);
+    Save("[General] RotationEnabled and [Position] PositionEnabled", [channels](Config& c) {
+        c.rotation_enabled = channels.rotation_enabled;
+        c.position_enabled = channels.position_enabled;
+    });
 }
 
 }  // namespace hol_ht::config

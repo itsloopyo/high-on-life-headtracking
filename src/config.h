@@ -5,8 +5,11 @@
 
 #include <string>
 
+#include "cameraunlock/config/config_concepts.g.h"
+#include "cameraunlock/config/config_owner.h"
 #include "cameraunlock/data/position_settings.h"
 #include "cameraunlock/math/smoothing_utils.h"
+#include "cameraunlock/tracking/tracking_mode.h"
 
 namespace hol_ht {
 
@@ -17,15 +20,7 @@ struct Config {
     // true = yaw turns about the world up-axis, so looking at the floor and
     // turning your head still pans across it. false = yaw turns about the
     // camera's own up-axis, which leans the horizon on a pitched turn.
-    // Runtime-toggleable; this is only the value the mod starts in.
     bool world_space_yaw = true;
-
-    float yaw_sensitivity = 1.0f;
-    float pitch_sensitivity = 1.0f;
-    float roll_sensitivity = 1.0f;
-    bool invert_yaw = false;
-    bool invert_pitch = false;
-    bool invert_roll = false;
 
     // Smoothing is picked per connection from the packet source address: a
     // tracker on this machine (loopback) uses local_smoothing, a remote network
@@ -33,10 +28,10 @@ struct Config {
     float local_smoothing = static_cast<float>(cameraunlock::math::kDefaultLocalSmoothing);
     float remote_smoothing = static_cast<float>(cameraunlock::math::kDefaultRemoteSmoothing);
 
+    // The tracking mode at startup, as the pair the mode hotkey saves.
+    bool rotation_enabled = true;
     bool position_enabled = true;
-    float position_sensitivity_x = 1.0f;
-    float position_sensitivity_y = 1.0f;
-    float position_sensitivity_z = 1.0f;
+
     float limit_x = cameraunlock::PositionSettings{}.limit_x;
     float limit_y = cameraunlock::PositionSettings{}.limit_y;
     float limit_y_down = cameraunlock::PositionSettings{}.limit_y_down;
@@ -49,22 +44,39 @@ struct Config {
     // off the rest of the time.
     bool aim_probe = false;
 
-    // Virtual-key code for the yaw-mode toggle. Ctrl+Shift+H does the same job
-    // and is not configurable.
-    int yaw_mode_key = 0x22;  // VK_NEXT (Page Down)
+    std::string toggle_key =
+        cameraunlock::config::schema::ConceptTraits<cameraunlock::config::schema::Concept::ToggleKey>::kCanonicalDefault;
+    std::string cycle_tracking_mode_key = cameraunlock::config::schema::ConceptTraits<
+        cameraunlock::config::schema::Concept::CycleTrackingModeKey>::kCanonicalDefault;
+    std::string yaw_mode_key =
+        cameraunlock::config::schema::ConceptTraits<cameraunlock::config::schema::Concept::YawModeKey>::kCanonicalDefault;
 };
 
 }  // namespace hol_ht
 
-// Reading and writing HeadTracking.ini, which sits next to the game exe.
+// HeadTracking.ini, next to the game exe, in cameraunlock-core's canonical
+// config format. One ConfigOwner reads and writes it; nothing else in the mod
+// touches the file.
 namespace hol_ht::config {
 
-// Fill `out` from the INI through the frozen reader in legacy_config/, which
-// range-checks every value and keeps the default for any key the file lacks.
-void Load(const std::string& exe_dir, Config& out);
+// The rows of HeadTracking.ini.
+cameraunlock::config::ConfigTable<Config> Table();
 
-// Write a fully commented INI of the defaults, unless the player already has
-// one. Never overwrites, so a hand-edited file survives every launch.
-void WriteDefaultIfMissing(const std::string& exe_dir);
+// What the renderer writes above the rows.
+cameraunlock::config::RenderHeader Header();
+
+// The owner's options for the file at `path`: the table, the frozen legacy
+// import and the header.
+cameraunlock::config::ConfigOwnerOptions<Config> OwnerOptions(const std::wstring& path);
+
+// Reads, converts or creates HeadTracking.ini in `exe_dir`, logs what the owner
+// reports, and returns the settings the session runs on. Call once, from the
+// bootstrap thread, with the log open.
+Config Load(const std::wstring& exe_dir);
+
+// Save the value a hotkey has just applied. The session keeps it whether or not
+// the save succeeds; a failed save is logged. Called from the hotkey thread.
+void SaveWorldSpaceYaw(bool world_space_yaw);
+void SaveTrackingMode(cameraunlock::TrackingMode mode);
 
 }  // namespace hol_ht::config

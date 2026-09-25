@@ -34,26 +34,12 @@ namespace {
 
 namespace ue = ::cameraunlock::unreal;
 
-using cameraunlock::TrackingMode;
-
 Config g_config;
 std::unique_ptr<cameraunlock::UdpReceiver> g_receiver;
 std::unique_ptr<Session> g_session;
 
 void ApplyConfigToSession() {
-    cameraunlock::SensitivitySettings sens;
-    sens.yaw          = g_config.yaw_sensitivity;
-    sens.pitch        = g_config.pitch_sensitivity;
-    sens.roll         = g_config.roll_sensitivity;
-    sens.invert_yaw   = g_config.invert_yaw;
-    sens.invert_pitch = g_config.invert_pitch;
-    sens.invert_roll  = g_config.invert_roll;
-    g_session->GetProcessor().SetSensitivity(sens);
-
     auto& ps = g_session->GetPositionProcessor().GetSettings();
-    ps.sensitivity_x = g_config.position_sensitivity_x;
-    ps.sensitivity_y = g_config.position_sensitivity_y;
-    ps.sensitivity_z = g_config.position_sensitivity_z;
     ps.limit_x       = g_config.limit_x;
     ps.limit_y       = g_config.limit_y;
     ps.limit_y_down  = g_config.limit_y_down;
@@ -69,9 +55,10 @@ void ApplyConfigToSession() {
     g_session->SetLocalSmoothing(g_config.local_smoothing);
     g_session->SetRemoteSmoothing(g_config.remote_smoothing);
 
-    g_session->SetMode(g_config.position_enabled
-        ? TrackingMode::RotationAndPosition
-        : TrackingMode::RotationOnly);
+    // The table reads a pair that names no mode as its defaults, so this always
+    // holds a mode.
+    g_session->SetMode(
+        cameraunlock::DecodeTrackingMode(g_config.rotation_enabled, g_config.position_enabled).value());
 }
 
 // GetModuleFileNameW does two things a fixed MAX_PATH buffer gets wrong. It
@@ -106,21 +93,6 @@ std::wstring ExeDir() {
     return slash == std::wstring::npos ? L"." : path.substr(0, slash);
 }
 
-// Narrow sibling of ExeDir for the ANSI IniReader (GetPrivateProfile*A).
-// Converted from the wide path through the ANSI code page, which is what
-// GetModuleFileNameA does internally - so this is the same string that call
-// produced, without a second fixed buffer to truncate.
-std::string ExeDirNarrow() {
-    const std::wstring dir = ExeDir();
-    const int needed = WideCharToMultiByte(CP_ACP, 0, dir.c_str(), static_cast<int>(dir.size()),
-                                           nullptr, 0, nullptr, nullptr);
-    if (needed <= 0) return ".";
-    std::string narrow(static_cast<std::size_t>(needed), 0);
-    WideCharToMultiByte(CP_ACP, 0, dir.c_str(), static_cast<int>(dir.size()),
-                        narrow.data(), needed, nullptr, nullptr);
-    return narrow;
-}
-
 void OpenLog() {
     // Core opens with CREATE_ALWAYS, so the log holds this session only, and
     // rotates the outgoing one to HeadTracking.prev.log first - the session
@@ -132,13 +104,11 @@ void OpenLog() {
 }
 
 void LoadConfig() {
-    const std::string exeDir = ExeDirNarrow();
-    config::WriteDefaultIfMissing(exeDir);
-    config::Load(exeDir, g_config);
-    Log::Line("config: udp_port=%d enable=%d yaw_sens=%.2f smoothing=local %.2f/remote %.2f position=%d",
+    g_config = config::Load(ExeDir());
+    Log::Line("config: udp_port=%d enable=%d smoothing=local %.2f/remote %.2f rotation=%d position=%d",
         g_config.udp_port, g_config.enable_on_startup ? 1 : 0,
-        g_config.yaw_sensitivity, g_config.local_smoothing, g_config.remote_smoothing,
-        g_config.position_enabled ? 1 : 0);
+        g_config.local_smoothing, g_config.remote_smoothing,
+        g_config.rotation_enabled ? 1 : 0, g_config.position_enabled ? 1 : 0);
 }
 
 // Fingerprint the host EXE against the build registry. False leaves the mod
@@ -253,11 +223,11 @@ DWORD WINAPI BootstrapThread(LPVOID) {
     // so it is off the stack the presentation gate walks.
     aim_point::Install(g_config.aim_probe);
 
-    hotkeys::Register(g_config);
+    hotkeys::Register(g_config, g_session->GetMode());
 
-    Log::Line("init complete. End=toggle PageUp=trackingmode VK 0x%02X=yawmode (%s) "
-              "(chords Ctrl+Shift+Y/G/H). UDP %d: %s.",
-        g_config.yaw_mode_key, g_config.world_space_yaw ? "world" : "local",
+    Log::Line("init complete. toggle=[%s] trackingmode=[%s] yawmode=[%s] (%s). UDP %d: %s.",
+        g_config.toggle_key.c_str(), g_config.cycle_tracking_mode_key.c_str(),
+        g_config.yaw_mode_key.c_str(), g_config.world_space_yaw ? "world" : "local",
         g_config.udp_port,
         g_receiver->IsRunning() ? "listening" : "waiting for the port to free up");
     return 0;

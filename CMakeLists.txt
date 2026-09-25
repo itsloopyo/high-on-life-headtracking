@@ -64,6 +64,7 @@ set(MOD_SOURCES
     src/mod_hotkeys.cpp
     src/config.cpp
     src/legacy_config/legacy_config.cpp
+    src/legacy_config/legacy_import.cpp
     src/rva_hook.cpp
     src/builds/build_registry.cpp
     src/builds/steam_offsets.cpp
@@ -125,9 +126,13 @@ if(HOL_BUILD_TESTS)
     hol_add_test(hol_boundary_tests
         SOURCES tests/boundary_tests.cpp src/camera_boundary.cpp)
 
+    # The canonical config, the committed file and the toggles' saves. Also the
+    # renderer behind `pixi run render-config` (--render-config <path>).
     hol_add_test(hol_config_tests
         SOURCES tests/config_tests.cpp src/config.cpp src/legacy_config/legacy_config.cpp
+                src/legacy_config/legacy_import.cpp
         LIBS cameraunlock)
+    target_compile_definitions(hol_config_tests PRIVATE HOL_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
     # The differential test for the config conversion. The oracle is the reader
     # of the newest published build, compiled from its own sources with the mod's
@@ -151,7 +156,8 @@ if(HOL_BUILD_TESTS)
     )
 
     hol_add_test(hol_config_differential_tests
-        SOURCES tests/config_differential/differential_tests.cpp src/legacy_config/legacy_config.cpp
+        SOURCES tests/config_differential/differential_tests.cpp src/config.cpp
+                src/legacy_config/legacy_config.cpp src/legacy_config/legacy_import.cpp
         LIBS hol_config_oracle cameraunlock bcrypt)
     target_include_directories(hol_config_differential_tests PRIVATE tests/config_differential)
     target_compile_definitions(hol_config_differential_tests PRIVATE

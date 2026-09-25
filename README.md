@@ -93,12 +93,16 @@ Two equivalent binding sets, use whichever your keyboard has:
 | Cycle tracking mode | `Page Up` | `Ctrl+Shift+G` |
 | Toggle yaw mode (world / camera-local) | `Page Down` | `Ctrl+Shift+H` |
 
+Each action's keys are a list in `HeadTracking.ini` (`ToggleKey`, `CycleTrackingModeKey`, `YawModeKey`), so either binding can be changed or removed there.
+
 `Page Up` / `Ctrl+Shift+G` cycles tracking mode:
 
 1. Normal head-tracked gameplay
 2. Positional tracking disabled, rotational tracking enabled
 3. Rotational tracking disabled, positional tracking enabled
 4. Back to normal
+
+The tracking mode and the yaw mode you pick are saved to `HeadTracking.ini` as you change them, so the game starts in them next time. `End` changes the current session only: whether tracking is on when the game starts is `EnableOnStartup`.
 
 ### Aiming down sights
 
@@ -111,66 +115,86 @@ Leaning eases out while the sights are up, because it would move your eye off th
 
 ## Configuration
 
-`HeadTracking.ini` is written next to the game exe, in `Oregon\Binaries\Win64\` on Steam or `Oregon\Binaries\WinGDK\` on Xbox Game Pass, on first launch. It is read once at startup, so a restart applies your edits, and deleting it resets everything to the defaults below.
+`HeadTracking.ini` is read once at startup, so a restart applies your edits, and deleting it gives you the defaults again at the next launch. A value the mod cannot read keeps its default, and `HeadTracking.log` names the line.
+
+<!-- cameraunlock:config -->
+The mod reads its settings from `HeadTracking.ini` in the game folder, at one of these paths depending on the store the game came from:
+
+- `Oregon\Binaries\Win64\HeadTracking.ini`
+- `Oregon\Binaries\WinGDK\HeadTracking.ini`
+
+It creates the file when it starts and finds none. Edit it with any text editor.
+
+Earlier versions of the mod used an older layout for this file. The first time this version starts, it converts the file once into the layout below and keeps the file as it was beside it as `HeadTracking.ini.pre-canonical`. `HeadTracking.ini.pre-canonical.last`, when present, is the file as it was before the most recent conversion: the mod converts the file again when it finds the older layout later, for example after an older version of the mod rewrote it.
+
+Comments, and keys the mod never read, are not carried over. Nor are these, where your old file had them:
+
+- Reticle settings, and a key that toggled the reticle.
+- A sensitivity, scale, deadzone, response curve or axis inversion you changed from its default. Set these in your tracker instead.
+- The setting for a feature that earlier versions shipped switched off while it was untested. It now follows the mod's default.
+
+An older version of the mod may not read the new layout correctly. It reads a key that moved as its own default, and it can misread a hotkey or another value that is now written as a name. To go back to an older version, first copy `HeadTracking.ini.pre-canonical` back over `HeadTracking.ini`, which restores the old file.
+
+With every setting at its default, the file reads:
 
 ```ini
-; High On Life Head Tracking
-;
-; Centring is done in your tracker (OpenTrack's Center bind, SteamVR, or
-; your phone app's CENTER button). The mod keeps no centre of its own.
+; High On Life head tracking settings.
+; Comments start with ; and go on their own line. Text after a value is part of the value.
+; Hotkeys are key names such as End, PageUp or Ctrl+Shift+Y. Separate several with commas; leave empty for none.
+
+[CameraUnlock]
+; Written by the mod. Leave this section in place.
+ConfigFormat=1
 
 [Network]
-Port=4242
+; UDP port the mod receives tracker data on (OpenTrack protocol).
+UdpPort=4242
 
 [General]
+; true: head tracking is on when the game starts. ToggleKey turns it on and off.
 EnableOnStartup=true
-; Yaw about the world up-axis (true) keeps the horizon level on a pitched
-; turn; camera-local yaw (false) leans it. Toggled in game with Page Down
-; or Ctrl+Shift+H; the toggle is not written back here.
+; true: yaw turns around the world's up axis. false: around the camera's own up axis.
 WorldSpaceYaw=true
-
-[Sensitivity]
-Yaw=1.00
-Pitch=1.00
-Roll=1.00
-
-[Inversion]
-Yaw=false
-Pitch=false
-Roll=false
+; true: turning your head turns the view.
+; Tracking mode at startup, with PositionEnabled. The mode hotkey changes both.
+RotationEnabled=true
 
 [Smoothing]
-; Local applies to a tracker sending from this machine over loopback;
-; Remote applies to anything else, including a phone on WiFi and this
-; machine's own LAN address. Both cover rotation and position.
-Local=0.00
-Remote=0.15
+; Smoothing when the tracker runs on this PC. 0 is the least, 1 the most.
+LocalSmoothing=0.0
+; Smoothing when the tracker is another device on the network, such as a phone.
+; 0 is the least, 1 the most.
+RemoteSmoothing=0.15
 
 [Position]
-Enabled=true
-SensitivityX=1.00
-SensitivityY=1.00
-SensitivityZ=1.00
-; Metres. Z is asymmetric: more room to lean in than to pull back.
-LimitX=0.30
-LimitY=0.20
-LimitYDown=0.20
-LimitZ=0.40
-LimitZBack=0.10
+; true: moving your head moves the view.
+; Tracking mode at startup, with RotationEnabled. The mode hotkey changes both.
+PositionEnabled=true
+; How far, in metres, leaning left or right can move the view.
+PositionLimitX=0.3
+; How far, in metres, raising your head can move the view.
+PositionLimitY=0.2
+; How far, in metres, lowering your head can move the view.
+PositionLimitYDown=0.2
+; How far, in metres, leaning forward can move the view.
+PositionLimitZ=0.4
+; How far, in metres, leaning back can move the view.
+PositionLimitZBack=0.1
 
 [Hotkeys]
-; Virtual-key codes. The Ctrl+Shift chords do the same jobs and are not
-; configurable.
-YawMode=0x22
+; Turns head tracking on and off.
+ToggleKey=End, Ctrl+Shift+Y
+; Changes the tracking mode: rotation and position, rotation only, position only.
+CycleTrackingModeKey=PageUp, Ctrl+Shift+G
+; Switches yaw between the world's up axis and the camera's own (WorldSpaceYaw).
+YawModeKey=PageDown, Ctrl+Shift+H
 
 [Dev]
-; Logs how far away the world point is that the crosshair is drawn from.
-; A number that tracks whatever the weapon is pointed at is the aim
-; trace working; a constant is it not. Off otherwise.
+; true: log the distance to the point the crosshair is drawn from. The game's aim
+; trace is working when that distance follows what the weapon points at.
 AimProbe=false
 ```
-
-Sensitivities are accepted between 0.1 and 3.0, smoothing between 0.0 and 1.0, position sensitivities between 0.0 and 5.0, and the position limits between 0.01 and 0.5 metres. A value outside its accepted range is clamped and the substitution is written to `HeadTracking.log`, so the log says why a setting did not do what you expected.
+<!-- /cameraunlock:config -->
 
 ## Troubleshooting
 
@@ -188,8 +212,8 @@ Sensitivities are accepted between 0.1 and 3.0, smoothing between 0.0 and 1.0, p
 
 **Jittery or unstable tracking**
 
-- If your tracker runs on this PC but sends to your LAN address rather than `127.0.0.1`, the mod classifies it as remote and applies the `Remote` smoothing value. Point the tracker at `127.0.0.1` to get the `Local` value instead.
-- Raise `Remote` in `[Smoothing]` for a phone on WiFi, or route the phone through OpenTrack so its filters clean up the feed.
+- If your tracker runs on this PC but sends to your LAN address rather than `127.0.0.1`, the mod classifies it as remote and applies `RemoteSmoothing`. Point the tracker at `127.0.0.1` to get `LocalSmoothing` instead.
+- Raise `RemoteSmoothing` in `[Smoothing]` for a phone on WiFi, or route the phone through OpenTrack so its filters clean up the feed.
 - Add filtering in your tracker. OpenTrack's accela filter and its curve mapping do this better than any setting here.
 
 **The weapon is off to one side when I aim down sights**
@@ -198,8 +222,8 @@ Sensitivities are accepted between 0.1 and 3.0, smoothing between 0.0 and 1.0, p
 
 **Yaw feels wrong when looking up or down at extreme angles**
 
-- Toggle between world-locked and camera-local yaw with `Page Down` (or `Ctrl+Shift+H`). World-locked, the default, turns your head about the world up-axis and keeps the horizon level. Camera-local turns it about the camera's own up-axis, which leans the horizon on a pitched turn.
-- If an axis moves the wrong way, flip it in `[Inversion]`, or fix the axis mapping in OpenTrack so every game behaves the same way.
+- Toggle between world-locked and camera-local yaw with `Page Down` (or `Ctrl+Shift+H`). World-locked, the default, turns your head about the world up-axis and keeps the horizon level. Camera-local turns it about the camera's own up-axis, which leans the horizon on a pitched turn. The mode you pick is saved.
+- If an axis moves the wrong way, invert it in your tracker, so every game behaves the same way.
 
 ## Updating
 
@@ -207,9 +231,9 @@ Download the new release and run `install.cmd` again. It overwrites the mod and 
 
 ## Uninstalling
 
-Run `uninstall.cmd`. It removes the mod DLL, the state file, and the mod's own `HeadTracking.ini` and logs. The Ultimate ASI Loader is only removed if the installer put it there; use `uninstall.cmd /force` to remove it anyway.
+Run `uninstall.cmd`. It removes the mod DLL, the state file and the mod's logs, and leaves `HeadTracking.ini` in place, with any `HeadTracking.ini.pre-canonical` and `HeadTracking.ini.pre-canonical.last` beside it, so your settings survive a reinstall. The Ultimate ASI Loader is only removed if the installer put it there; use `uninstall.cmd /force` to remove it anyway.
 
-By hand: delete `HighOnLifeHeadTracking.asi`, `winmm.dll`, `HeadTracking.ini`, `HeadTracking.log` and `HeadTracking.prev.log` from the folder holding the game exe (`Oregon\Binaries\Win64\` on Steam, `Oregon\Binaries\WinGDK\` on Xbox Game Pass).
+By hand: delete `HighOnLifeHeadTracking.asi`, `winmm.dll`, `HeadTracking.log` and `HeadTracking.prev.log` from the folder holding the game exe (`Oregon\Binaries\Win64\` on Steam, `Oregon\Binaries\WinGDK\` on Xbox Game Pass), and `HeadTracking.ini` and its `.pre-canonical` copies too if you do not want to keep your settings.
 
 ## Building from Source
 

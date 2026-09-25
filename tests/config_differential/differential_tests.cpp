@@ -3,18 +3,26 @@
 
 // The differential test for the HeadTracking.ini conversion.
 //
-// Two readings of every input, and what may differ between them:
+// Three readings of every input, and what may differ between them:
 //
-//   Oracle  the reader of the newest published build (the `dev` pre-release,
-//           c24cc5a, core 9d86b01), compiled from its own sources (oracle_api.h)
-//   Import  the frozen reader in src/legacy_config/
+//   Oracle     the reader of the newest published build (the `dev` pre-release,
+//              c24cc5a, core 9d86b01), compiled from its own sources (oracle_api.h)
+//   Import     the frozen reader in src/legacy_config/
+//   Migration  the config owner converting the file through the frozen import,
+//              then the canonical reader and table on what it wrote
 //
 // Comparison 1, oracle against import, is what a player sees change that the
 // conversion did not cause: commits since the published build that change how
 // the file is read. Each one is listed below with its commit.
 //
+// Comparison 2, import against migration, is the proof for the conversion. The
+// one difference it allows is the approved pose_shaping change: a sensitivity
+// or inversion the import read that differs from the shipped value is dropped,
+// and every such value is listed in the import's result. No default moved, so
+// the no-file input may not differ either.
+//
 // Inputs: the published build's first-run file (it shipped no config and seeded
-// none, so that is the file every player of it holds), no file, an empty file,
+// none, so every player's file started as that one), no file, an empty file,
 // and core's corpus of mutations of the first-run file.
 
 #include <windows.h>
@@ -26,17 +34,22 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
-#include <sstream>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
+#include "config.h"
 #include "legacy_config/legacy_config.h"
+#include "legacy_config/legacy_import.h"
 #include "oracle_api.h"
 #include "test_harness.h"
 
+#include "cameraunlock/config/canonical_ini.h"
+#include "cameraunlock/config/config_owner.h"
 #include "cameraunlock/config/legacy_import.h"
 #include "cameraunlock/config/testing/ini_mutations.h"
+#include "cameraunlock/input/key_bindings.h"
 #include "cameraunlock/tracking/tracking_mode.h"
 
 namespace {
@@ -82,6 +95,8 @@ constexpr Pinned kPinned[] = {
     {"src/logging.h", "ae05e3e25016c6954e8ab2615163a32ce3bc0d74359d4861b715e33ad0078a6b"},
     {"src/legacy_config/legacy_config.h", "80c43c94e0ac871539b5946df2f88c33dd266f162bf231cf7c73086a5738b27a"},
     {"src/legacy_config/legacy_config.cpp", "6506ef94eaff3358edf70527657925df2c2497a58b0fad6cb34ca12024b75bcd"},
+    {"src/legacy_config/legacy_import.h", "3c0a523b2682edad219efcdd82ceec403f0f0d8f2900356f96e5ac74e67cf545"},
+    {"src/legacy_config/legacy_import.cpp", "60d36ed5427dae7ddc23d0e8483e71c64e90244a06092b38496b4c4940c8d616"},
 };
 
 std::string ReadFileBytes(const std::string& path) {
@@ -158,6 +173,25 @@ public:
 
     const std::string& dir() const { return dir_; }
     std::string ini() const { return dir_ + "\\HeadTracking.ini"; }
+    std::wstring wini() const {
+        const std::string path = ini();
+        return std::wstring(path.begin(), path.end());
+    }
+
+    // Every file in the folder, by name, with its bytes.
+    std::vector<std::pair<std::string, std::string>> Listing() const {
+        std::vector<std::pair<std::string, std::string>> files;
+        WIN32_FIND_DATAA found;
+        const HANDLE h = FindFirstFileA((dir_ + "\\*").c_str(), &found);
+        if (h == INVALID_HANDLE_VALUE) return files;
+        do {
+            if (found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+            files.push_back({found.cFileName, ReadFileBytes(dir_ + "\\" + found.cFileName)});
+        } while (FindNextFileA(h, &found));
+        FindClose(h);
+        std::sort(files.begin(), files.end());
+        return files;
+    }
 
     void Write(const std::string& bytes) const {
         std::ofstream out(ini(), std::ios::binary | std::ios::trunc);
@@ -346,11 +380,9 @@ std::vector<testing::MutationKey> CorpusKeys() {
     };
 }
 
-std::vector<cfg::LegacyKey> CorpusReads() {
-    std::vector<cfg::LegacyKey> reads;
-    for (const testing::MutationKey& k : CorpusKeys()) reads.push_back({k.section, k.key});
-    return reads;
-}
+// The generator refuses the call when these and the descriptors name different
+// keys, so the corpus covers every key the import reads.
+std::vector<cfg::LegacyKey> CorpusReads() { return hol_ht::legacy::Import().keys; }
 
 struct Input {
     std::string name;
@@ -424,6 +456,169 @@ void OracleAgainstImport(const std::vector<Input>& inputs) {
     std::printf("comparison 1: %d inputs\n", compared);
 }
 
+Observed ObserveCanonical(const hol_ht::Config& c) {
+    Observed o;
+    o.udp_port = c.udp_port;
+    o.start_enabled = c.enable_on_startup;
+    o.start_world_yaw = c.world_space_yaw;
+    o.start_mode = static_cast<int>(cameraunlock::DecodeTrackingMode(c.rotation_enabled, c.position_enabled).value());
+    o.local_smoothing = c.local_smoothing;
+    o.remote_smoothing = c.remote_smoothing;
+    const float limits[5] = {c.limit_x, c.limit_y, c.limit_y_down, c.limit_z, c.limit_z_back};
+    std::copy(std::begin(limits), std::end(limits), o.limits);
+    o.aim_probe = c.aim_probe;
+    // mod_hotkeys.cpp Register: each list through ParseKeyBindings and
+    // RegisterKeyBindings.
+    const std::pair<Action, const std::string*> lists[] = {
+        {kToggle, &c.toggle_key}, {kCycleMode, &c.cycle_tracking_mode_key}, {kYawMode, &c.yaw_mode_key}};
+    for (const auto& [action, list] : lists) {
+        const cameraunlock::input::KeyBindingsParseResult parsed = cameraunlock::input::ParseKeyBindings(*list);
+        CHECK_MSG(parsed.ok(), "a migrated key list parses");
+        for (const cameraunlock::input::KeyBinding& b : parsed.bindings) {
+            o.hotkeys.push_back({action, b.vk, static_cast<unsigned>(b.modifiers)});
+        }
+    }
+    std::sort(o.hotkeys.begin(), o.hotkeys.end());
+    return o;
+}
+
+// The pose_shaping entries the import recorded for what it read: one per
+// sensitivity and inversion, in the frozen reader's order, folded exactly when
+// the value is the shipped one; and the dropped values exactly the ones not
+// folded, as PoseShaping, and nothing else.
+bool PoseShapingIsTheOnlyDrop(const hol_ht::legacy::Config& read, const cfg::ImportResult& result) {
+    const hol_ht::legacy::Config shipped{};
+    struct Expected {
+        const char* section;
+        const char* key;
+        bool folded;
+    };
+    const Expected expected[] = {
+        {"Sensitivity", "Yaw", Bits(read.yaw_sensitivity) == Bits(shipped.yaw_sensitivity)},
+        {"Sensitivity", "Pitch", Bits(read.pitch_sensitivity) == Bits(shipped.pitch_sensitivity)},
+        {"Sensitivity", "Roll", Bits(read.roll_sensitivity) == Bits(shipped.roll_sensitivity)},
+        {"Inversion", "Yaw", read.invert_yaw == shipped.invert_yaw},
+        {"Inversion", "Pitch", read.invert_pitch == shipped.invert_pitch},
+        {"Inversion", "Roll", read.invert_roll == shipped.invert_roll},
+        {"Position", "SensitivityX", Bits(read.position_sensitivity_x) == Bits(shipped.position_sensitivity_x)},
+        {"Position", "SensitivityY", Bits(read.position_sensitivity_y) == Bits(shipped.position_sensitivity_y)},
+        {"Position", "SensitivityZ", Bits(read.position_sensitivity_z) == Bits(shipped.position_sensitivity_z)},
+    };
+    if (result.pose_shaping.size() != std::size(expected)) return false;
+    std::size_t dropped = 0;
+    for (std::size_t i = 0; i < std::size(expected); ++i) {
+        const cfg::PoseShapingValue& got = result.pose_shaping[i];
+        if (got.section != expected[i].section || got.key != expected[i].key) return false;
+        if (got.folded != expected[i].folded) return false;
+        if (got.folded) continue;
+        if (dropped >= result.dropped.size()) return false;
+        const cfg::DroppedValue& d = result.dropped[dropped++];
+        if (d.rule != cfg::DropRule::PoseShaping || d.section != got.section || d.key != got.key ||
+            d.value != got.value) {
+            return false;
+        }
+    }
+    return dropped == result.dropped.size();
+}
+
+std::vector<std::string> CanonicalDiagnostics(const std::string& bytes, hol_ht::Config& out) {
+    std::vector<std::string> found;
+    const cfg::CanonicalIni doc = cfg::ParseCanonicalIni(bytes);
+    for (const cfg::CanonicalDiagnostic& d : doc.diagnostics) found.push_back("reader: " + cfg::DescribeCanonicalDiagnostic(d));
+    const cfg::ConfigTable<hol_ht::Config> table = hol_ht::config::Table();
+    out = table.defaults();
+    for (const cfg::CanonicalDiagnostic& d : cfg::ApplyCanonical(doc, table, out).diagnostics) {
+        found.push_back("table: " + cfg::DescribeCanonicalDiagnostic(d));
+    }
+    return found;
+}
+
+bool AsciiCrlf(const std::string& bytes) {
+    for (std::size_t i = 0; i < bytes.size(); ++i) {
+        const unsigned char c = static_cast<unsigned char>(bytes[i]);
+        if (c > 0x7E) return false;
+        if (c == '\r' && (i + 1 == bytes.size() || bytes[i + 1] != '\n')) return false;
+        if (c == '\n' && (i == 0 || bytes[i - 1] != '\r')) return false;
+        if (c < 0x20 && c != '\r' && c != '\n') return false;
+    }
+    return !bytes.empty() && bytes.back() == '\n';
+}
+
+// Comparison 2, and what the conversion must do with every input besides.
+void ImportAgainstMigration(const std::vector<Input>& inputs) {
+    const std::string committed = ReadFileBytes(std::string(HOL_SOURCE_DIR) + "/config/HeadTracking.ini");
+    const cfg::ConfigTable<hol_ht::Config> table = hol_ht::config::Table();
+    int compared = 0;
+    for (const Input& input : inputs) {
+        const char* name = input.name.c_str();
+
+        // The import, run as the owner runs it but on a read-only copy: it reads
+        // what the frozen reader reads, records the drops, and writes nothing.
+        cfg::ImportResult imported;
+        hol_ht::legacy::Config read;
+        {
+            Scratch ro;
+            if (input.present) {
+                ro.Write(input.bytes);
+                SetFileAttributesA(ro.ini().c_str(), FILE_ATTRIBUTE_READONLY);
+            }
+            const auto before = ro.Listing();
+            hol_ht::Config unused = table.defaults();
+            imported = hol_ht::legacy::Import().run({ro.wini(), ro.ini(), false}, unused);
+            CHECK_MSG(ro.Listing() == before, "the import leaves a read-only folder as it was");
+            hol_ht::legacy::Load(ro.dir(), read);
+        }
+        CHECK_MSG(imported.status == (input.present ? cfg::ImportStatus::Imported : cfg::ImportStatus::Absent),
+                  "the import reads every input, as the published build did");
+        const bool drops_ok = PoseShapingIsTheOnlyDrop(read, imported);
+        if (!drops_ok) std::printf("  comparison 2, %s: dropped values\n", name);
+        CHECK_MSG(drops_ok, "comparison 2: the only drops are pose shaping set away from what shipped");
+
+        Scratch s;
+        if (input.present) s.Write(input.bytes);
+        cfg::ConfigOwner<hol_ht::Config> owner(hol_ht::config::OwnerOptions(s.wini()));
+        const cfg::ConfigLoadResult<hol_ht::Config> loaded = owner.Load();
+        const cfg::ConfigLoadStatus want =
+            input.present ? cfg::ConfigLoadStatus::Migrated : cfg::ConfigLoadStatus::Created;
+        if (loaded.status != want) {
+            std::printf("  comparison 2, %s: %s, %s\n", name, cfg::ConfigLoadStatusName(loaded.status),
+                        loaded.reason.c_str());
+        }
+        CHECK_MSG(loaded.status == want, "every legacy input converts, and no file is created");
+
+        const std::vector<std::string> diff = Differences(ObserveLegacy(read), ObserveCanonical(loaded.config));
+        for (const std::string& d : diff) std::printf("  comparison 2, %s: %s\n", name, d.c_str());
+        CHECK_MSG(diff.empty(), "comparison 2: the migration runs as the import read");
+
+        const std::string migrated = ReadFileBytes(s.ini());
+        hol_ht::Config reread;
+        const std::vector<std::string> diagnostics = CanonicalDiagnostics(migrated, reread);
+        for (const std::string& d : diagnostics) std::printf("  %s: migrated file, %s\n", name, d.c_str());
+        CHECK_MSG(diagnostics.empty(), "the migrated file reads with no diagnostic");
+        CHECK_MSG(AsciiCrlf(migrated), "the migrated file is ASCII with CRLF line ends");
+        CHECK_MSG(Differences(ObserveCanonical(reread), ObserveCanonical(loaded.config)).empty(),
+                  "the migrated file reads back as the settings the session runs on");
+        CHECK_MSG(cfg::RenderCanonical(table, reread, hol_ht::config::Header()) == migrated,
+                  "rendering the re-read settings gives the migrated bytes");
+        if (input.present) {
+            CHECK_MSG(ReadFileBytes(s.ini() + ".pre-canonical") == input.bytes,
+                      ".pre-canonical holds the input byte for byte");
+        }
+
+        cfg::ConfigOwner<hol_ht::Config> again(hol_ht::config::OwnerOptions(s.wini()));
+        CHECK_MSG(again.Load().status == cfg::ConfigLoadStatus::Canonical, "the migrated file loads as canonical");
+        CHECK_MSG(ReadFileBytes(s.ini()) == migrated, "loading the migrated file again changes nothing");
+
+        // Fresh equals upgrade: the published build's first-run file, and no file
+        // at all, both end as the committed file.
+        if (input.name == "dev c24cc5a first-run file" || input.name == "no file") {
+            CHECK_MSG(migrated == committed, "the first-run file and no file both give the committed file");
+        }
+        ++compared;
+    }
+    std::printf("comparison 2: %d inputs\n", compared);
+}
+
 }  // namespace
 
 int main() {
@@ -431,5 +626,6 @@ int main() {
     FirstRunFileIsThePublishedBuilds();
     const std::vector<Input> inputs = Inputs();
     OracleAgainstImport(inputs);
+    ImportAgainstMigration(inputs);
     return hol_test::Report();
 }
