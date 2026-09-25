@@ -63,6 +63,7 @@ set(MOD_SOURCES
     src/ads_state.cpp
     src/mod_hotkeys.cpp
     src/config.cpp
+    src/legacy_config/legacy_config.cpp
     src/rva_hook.cpp
     src/builds/build_registry.cpp
     src/builds/steam_offsets.cpp
@@ -125,8 +126,36 @@ if(HOL_BUILD_TESTS)
         SOURCES tests/boundary_tests.cpp src/camera_boundary.cpp)
 
     hol_add_test(hol_config_tests
-        SOURCES tests/config_tests.cpp src/config.cpp
+        SOURCES tests/config_tests.cpp src/config.cpp src/legacy_config/legacy_config.cpp
         LIBS cameraunlock)
+
+    # The differential test for the config conversion. The oracle is the reader
+    # of the newest published build, compiled from its own sources with the mod's
+    # and core's namespaces renamed, so it links beside today's code and nothing
+    # in it can resolve to a symbol of the mod under test. Its include roots put
+    # the published build's files ahead of core's current headers.
+    add_library(hol_config_oracle STATIC
+        tests/config_differential/oracle_api.cpp
+        tests/config_differential/oracle/src/config.cpp
+        cameraunlock-core/cpp/src/config/ini_reader.cpp
+        cameraunlock-core/cpp/src/logging/file_log.cpp
+    )
+    target_include_directories(hol_config_oracle PRIVATE
+        tests/config_differential/oracle/src
+        tests/config_differential/oracle/core
+        cameraunlock-core/cpp/include
+    )
+    target_compile_definitions(hol_config_oracle PRIVATE
+        hol_ht=hol_ht_oracle
+        cameraunlock=hol_oracle_core
+    )
+
+    hol_add_test(hol_config_differential_tests
+        SOURCES tests/config_differential/differential_tests.cpp src/legacy_config/legacy_config.cpp
+        LIBS hol_config_oracle cameraunlock bcrypt)
+    target_include_directories(hol_config_differential_tests PRIVATE tests/config_differential)
+    target_compile_definitions(hol_config_differential_tests PRIVATE
+        HOL_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
     # The lean fade, the zoom and the tracking gate. Header-only maths - no
     # hooks, no game, no Windows machinery - so they run on a machine with no

@@ -8,7 +8,16 @@
 #include "cameraunlock/data/position_settings.h"
 #include "cameraunlock/math/smoothing_utils.h"
 
-namespace hol_ht {
+// The pre-canonical HeadTracking.ini reader, frozen. It reads a file the way the
+// last build before the canonical config format did, so a player's old file is
+// converted as that build read it. Never edit anything in this folder: the
+// differential test in tests/config_differential/ pins every file here by hash.
+//
+// Frozen from src/config.h and src/config.cpp at the commit before the canonical
+// config conversion, with three changes: it fills this frozen copy of that
+// commit's Config and its defaults instead of the runtime type, it writes
+// nothing, and it lives in namespace hol_ht::legacy.
+namespace hol_ht::legacy {
 
 struct Config {
     int udp_port = 4242;
@@ -54,17 +63,9 @@ struct Config {
     int yaw_mode_key = 0x22;  // VK_NEXT (Page Down)
 };
 
-}  // namespace hol_ht
-
-// Reading and writing HeadTracking.ini, which sits next to the game exe.
-namespace hol_ht::config {
-
-// Fill `out` from the INI through the frozen reader in legacy_config/, which
-// range-checks every value and keeps the default for any key the file lacks.
+// Fill `out` from the INI, leaving each field at the default it arrived with
+// when the file has no key for it. The INI is a system boundary, so every value
+// is range-checked here and trusted everywhere above.
 void Load(const std::string& exe_dir, Config& out);
 
-// Write a fully commented INI of the defaults, unless the player already has
-// one. Never overwrites, so a hand-edited file survives every launch.
-void WriteDefaultIfMissing(const std::string& exe_dir);
-
-}  // namespace hol_ht::config
+}  // namespace hol_ht::legacy

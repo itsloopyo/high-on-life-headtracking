@@ -21,7 +21,8 @@ build = { cmd = "cmake --build build --config Release", depends-on = ["setup"] }
 build-debug = { cmd = "cmake --build build --config Debug", depends-on = ["setup"] }
 
 # Behaviour locks for the camera boundary, the presentation gate and the INI
-# contract. No game, no hooks, no Windows machinery - runs anywhere.
+# contract, and the config conversion's differential test. No game and no hooks;
+# the INI suites read files through GetPrivateProfileString, so they need Windows.
 test = { cmd = "ctest --test-dir build -C Release --output-on-failure", depends-on = ["build"] }
 
 clean = { cmd = """
@@ -36,7 +37,7 @@ clean-all = { cmd = """
 # nothing depends on it; build/package/release consume whatever is committed.
 update-deps = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/update-deps.ps1" }
 
-package = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["build"] }
+package = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["test"] }
 
 # Full release workflow: stamp version, changelog, package, commit, tag, push.
 release = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release.ps1" }
