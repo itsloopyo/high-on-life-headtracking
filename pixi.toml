@@ -68,4 +68,6 @@ install = { depends-on = ["deploy"] }
 uninstall = "./scripts/uninstall.cmd"
 
 [dependencies]
-# No pixi-managed deps - relies on system CMake + Visual Studio.
+# CMake and Visual Studio come from the system. Node runs render-config's
+# encode-seed step, pinned to the release core's own lock resolves.
+nodejs = "==26.5.0"
