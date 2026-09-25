@@ -3,13 +3,13 @@
 ## [Unreleased]
 
 ### Added
-- The tracking mode (`Page Up` / `Ctrl+Shift+G`) and the yaw mode (`Page Down` / `Ctrl+Shift+H`) are saved to `HeadTracking.ini` the moment you change them, so the game starts in them next time.
+- The tracking mode (`PageUp` / `Ctrl+Shift+G`) and the yaw mode (`PageDown` / `Ctrl+Shift+H`) are saved to `HeadTracking.ini` the moment you change them, so the game starts in them next time.
 
 ### Changed
 - `HeadTracking.ini` has a new layout. The first time this version starts, it converts the file once into the new layout and keeps the file as it was beside it as `HeadTracking.ini.pre-canonical`. `HeadTracking.ini.pre-canonical.last`, when present, is the file as it was before the most recent conversion: the mod converts the file again when it finds the older layout later, for example after an older version of the mod rewrote it.
 - Comments, and keys the mod never read, are not carried over. Nor are these, where your old file had them:
   - A sensitivity, scale, deadzone, response curve or axis inversion you changed from its default. Set these in your tracker instead.
-- Hotkeys are written as key names, and each hotkey lists every key that triggers it, the Ctrl+Shift chord included: `ToggleKey=End, Ctrl+Shift+Y`. `End`, `Page Up` and all three chords were fixed before and can now be changed or removed like any other key. `[Hotkeys] YawMode=0x22` becomes `YawModeKey=PageDown, Ctrl+Shift+H`.
+- Hotkeys are written as key names, and each hotkey lists every key that triggers it, the Ctrl+Shift chord included: `ToggleKey=End, Ctrl+Shift+Y`. `End`, `PageUp` and all three chords were fixed before and can now be changed or removed like any other key. `[Hotkeys] YawMode=0x22` becomes `YawModeKey=PageDown, Ctrl+Shift+H`.
 - Settings keep their values under their new names: `[Network] Port` is `UdpPort`, `[Smoothing] Local` and `Remote` are `LocalSmoothing` and `RemoteSmoothing`, `[Position] LimitX` to `LimitZBack` are `PositionLimitX` to `PositionLimitZBack`, and `[Position] Enabled` is the startup tracking mode, written as `[General] RotationEnabled` and `[Position] PositionEnabled`.
 - A value outside a setting's range is no longer clamped to the nearest end: it keeps the default, and `HeadTracking.log` names the line. `UdpPort` takes 1 to 65535, the smoothing values 0 to 1 and the position limits 0 to 10 metres.
 - An older version of the mod may not read the new layout correctly. It reads a key that moved as its own default, and it can misread a hotkey or another value that is now written as a name. To go back to an older version, first copy `HeadTracking.ini.pre-canonical` back over `HeadTracking.ini`, which restores the old file.

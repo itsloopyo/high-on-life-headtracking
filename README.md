@@ -81,7 +81,7 @@ The test is quicker than the theory. Try direct, hold your head still, and if th
 
 I made [Headcam](https://headcam.app) so decent tracking was free for anybody with a phone already in their pocket. It filters on-device, so it can send direct. Any other app that filters enough works exactly the same way.
 
-One thing to know about smoothing: a phone on WiFi is a remote connection and gets the `Remote` value, and so does a tracker on this same PC that sends to your LAN address instead of `127.0.0.1`. The mod picks between the two from the packet source address, so it sees a transport and not a machine.
+One thing to know about smoothing: a phone on WiFi is a remote connection and gets the `RemoteSmoothing` value, and so does a tracker on this same PC that sends to your LAN address instead of `127.0.0.1`. The mod picks between the two from the packet source address, so it sees a transport and not a machine.
 
 ## Controls
 
@@ -90,12 +90,12 @@ Two equivalent binding sets, use whichever your keyboard has:
 | Action | Nav-cluster | Chord |
 |--------|-------------|-------|
 | Toggle tracking | `End` | `Ctrl+Shift+Y` |
-| Cycle tracking mode | `Page Up` | `Ctrl+Shift+G` |
-| Toggle yaw mode (world / camera-local) | `Page Down` | `Ctrl+Shift+H` |
+| Cycle tracking mode | `PageUp` | `Ctrl+Shift+G` |
+| Toggle yaw mode (world / camera-local) | `PageDown` | `Ctrl+Shift+H` |
 
 Each action's keys are a list in `HeadTracking.ini` (`ToggleKey`, `CycleTrackingModeKey`, `YawModeKey`), so either binding can be changed or removed there.
 
-`Page Up` / `Ctrl+Shift+G` cycles tracking mode:
+`PageUp` / `Ctrl+Shift+G` cycles tracking mode:
 
 1. Normal head-tracked gameplay
 2. Positional tracking disabled, rotational tracking enabled
@@ -222,7 +222,7 @@ AimProbe=false
 
 **Yaw feels wrong when looking up or down at extreme angles**
 
-- Toggle between world-locked and camera-local yaw with `Page Down` (or `Ctrl+Shift+H`). World-locked, the default, turns your head about the world up-axis and keeps the horizon level. Camera-local turns it about the camera's own up-axis, which leans the horizon on a pitched turn. The mode you pick is saved.
+- Toggle between world-locked and camera-local yaw with `PageDown` (or `Ctrl+Shift+H`). World-locked, the default, turns your head about the world up-axis and keeps the horizon level. Camera-local turns it about the camera's own up-axis, which leans the horizon on a pitched turn. The mode you pick is saved.
 - If an axis moves the wrong way, invert it in your tracker, so every game behaves the same way.
 
 ## Updating
