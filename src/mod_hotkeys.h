@@ -8,7 +8,7 @@
 
 #include "cameraunlock/tracking/tracking_mode.h"
 
-// The mod's key bindings: the three key lists in HeadTracking.ini, each holding
+// The mod's key bindings: the three key lists in CameraUnlock.ini, each holding
 // its nav-cluster key and its Ctrl+Shift chord by default. Each binding does its
 // work through view_hook or the session and says what it did in the log, so this
 // is the only place that knows which key means what.

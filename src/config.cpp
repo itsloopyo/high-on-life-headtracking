@@ -20,7 +20,8 @@ namespace {
 namespace cfg = ::cameraunlock::config;
 using cfg::schema::Concept;
 
-constexpr const wchar_t* kIniName = L"HeadTracking.ini";
+constexpr const wchar_t* kIniName = L"CameraUnlock.ini";
+constexpr const wchar_t* kLegacyIniName = L"HeadTracking.ini";
 
 // data/games.json's display_name for high-on-life.
 constexpr const char* kDisplayName = "High On Life";
@@ -29,8 +30,9 @@ std::unique_ptr<cfg::ConfigOwner<Config>> g_owner;
 
 void Save(const char* rows, const std::function<void(Config&)>& change) {
     const cfg::ConfigSaveResult result = g_owner->Save(change);
-    if (result.status == cfg::ConfigSaveStatus::Saved) return;
-    Log::Line("config: %s %s: %s", rows, cfg::ConfigSaveStatusName(result.status), result.reason.c_str());
+    if (result.status != cfg::ConfigSaveStatus::Saved) {
+        Log::Line("config: %s %s: %s", rows, cfg::ConfigSaveStatusName(result.status), result.reason.c_str());
+    }
     for (const std::string& line : result.log) Log::Line("config: %s", line.c_str());
 }
 
@@ -68,17 +70,19 @@ cfg::RenderHeader Header() {
     return header;
 }
 
-cfg::ConfigOwnerOptions<Config> OwnerOptions(const std::wstring& path) {
+cfg::ConfigOwnerOptions<Config> OwnerOptions(const std::wstring& exe_dir, cfg::DefaultsFile defaults) {
     cfg::ConfigOwnerOptions<Config> options;
-    options.path = path;
+    options.path = exe_dir + L"\\" + kIniName;
     options.table = Table();
     options.import = legacy::Import();
+    options.legacy_path = exe_dir + L"\\" + kLegacyIniName;
     options.header = Header();
+    options.defaults = std::move(defaults);
     return options;
 }
 
-Config Load(const std::wstring& exe_dir) {
-    g_owner = std::make_unique<cfg::ConfigOwner<Config>>(OwnerOptions(exe_dir + L"\\" + kIniName));
+Config Load(const std::wstring& exe_dir, cfg::DefaultsFile defaults) {
+    g_owner = std::make_unique<cfg::ConfigOwner<Config>>(OwnerOptions(exe_dir, std::move(defaults)));
     const cfg::ConfigLoadResult<Config> result = g_owner->Load();
     for (const std::string& line : result.log) Log::Line("config: %s", line.c_str());
     if (!result.reason.empty()) Log::Line("config: %s", result.reason.c_str());

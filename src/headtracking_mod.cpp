@@ -66,7 +66,7 @@ void ApplyConfigToSession() {
 // reads uninitialised stack until it happens on a NUL. And when the path does
 // not fit it TRUNCATES rather than failing - which is not theoretical on
 // Windows, where a Steam library can sit well past MAX_PATH - and a truncated
-// directory sends HeadTracking.log and HeadTracking.ini somewhere that is not
+// directory sends HeadTracking.log and CameraUnlock.ini somewhere that is not
 // next to the exe, so the player gets no log and their hand-edited settings are
 // ignored with nothing saying why.
 //
@@ -104,7 +104,7 @@ void OpenLog() {
 }
 
 void LoadConfig() {
-    g_config = config::Load(ExeDir());
+    g_config = config::Load(ExeDir(), cameraunlock::config::DefaultsFile::PerUser());
     Log::Line("config: udp_port=%d enable=%d smoothing=local %.2f/remote %.2f rotation=%d position=%d",
         g_config.udp_port, g_config.enable_on_startup ? 1 : 0,
         g_config.local_smoothing, g_config.remote_smoothing,

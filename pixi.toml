@@ -20,9 +20,11 @@ setup = { cmd = """
 build = { cmd = "cmake --build build --config Release", depends-on = ["setup"] }
 build-debug = { cmd = "cmake --build build --config Debug", depends-on = ["setup"] }
 
-# Rewrites config/HeadTracking.ini, the committed canonical config, from the
-# table after a change to a row, a comment or a default, then re-encodes any
-# launcher seed from it. hol_config_tests fails while the two differ.
+# Rewrites config/HeadTracking.ini, the committed canonical config and the file
+# the mod creates as CameraUnlock.ini, from the table after a change to a row, a
+# comment or a default, then rewrites the launcher manifest config descriptor's
+# per_game from it where the manifest has one. hol_config_tests fails while the
+# two differ.
 render-config = { cmd = "build/Release/hol_config_tests.exe --render-config config/HeadTracking.ini && node cameraunlock-core/scripts/encode-seed.mjs", depends-on = ["build"] }
 
 # Behaviour locks for the camera boundary, the presentation gate and the INI
@@ -58,8 +60,10 @@ fast-boot-restore = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File
 launch = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/launch.ps1" }
 
 # Named because the fleet's tooling and other mods' error messages assume they
-# exist. Both are real checks, not stubs.
-validate-manifest = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate-manifest.ps1" }
+# exist. Both are real checks, not stubs. validate-manifest also runs core's
+# validator on the newest release/*-installer.zip, which holds the package to the
+# manifest and its config descriptor, so run it after `pixi run package`.
+validate-manifest = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate-manifest.ps1 && node cameraunlock-core/scripts/validate-manifest.mjs" }
 validate-notices = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/validate-notices.ps1" }
 
 release-nightly = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release-nightly.ps1" }

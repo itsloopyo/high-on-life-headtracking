@@ -162,6 +162,12 @@ if(HOL_BUILD_TESTS)
     target_include_directories(hol_config_differential_tests PRIVATE tests/config_differential)
     target_compile_definitions(hol_config_differential_tests PRIVATE
         HOL_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    # Core's canonical config lint over the committed file and every file the
+    # differential test migrated, which it writes beside itself under migrated\.
+    add_test(NAME hol_config_lint COMMAND node
+        ${CMAKE_SOURCE_DIR}/tests/config_differential/lint-migrated.mjs
+        $<TARGET_FILE_DIR:hol_config_differential_tests>/migrated)
+    set_tests_properties(hol_config_lint PROPERTIES DEPENDS hol_config_differential_tests)
 
     # The lean fade, the zoom and the tracking gate. Header-only maths - no
     # hooks, no game, no Windows machinery - so they run on a machine with no

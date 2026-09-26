@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 itsloopyo
 
-// The differential test for the HeadTracking.ini conversion.
+// The differential test for the conversion from HeadTracking.ini to
+// CameraUnlock.ini.
 //
 // Three readings of every input, and what may differ between them:
 //
 //   Oracle     the reader of the newest published build (the `dev` pre-release,
 //              c24cc5a, core 9d86b01), compiled from its own sources (oracle_api.h)
 //   Import     the frozen reader in src/legacy_config/
-//   Migration  the config owner converting the file through the frozen import,
-//              then the canonical reader and table on what it wrote
+//   Migration  the config owner's Load in a folder holding only the input as
+//              HeadTracking.ini, which imports it through the frozen import into
+//              a new CameraUnlock.ini, then the canonical reader and table on it
 //
 // Comparison 1, oracle against import, is what a player sees change that the
 // conversion did not cause: commits since the published build that change how
@@ -20,6 +22,12 @@
 // or inversion the import read that differs from the shipped value is dropped,
 // and every such value is listed in the import's result. No default moved, so
 // the no-file input may not differ either.
+//
+// Each input migrates three times: over a Defaults.ini the owner creates with the
+// built-in values, from a read-only HeadTracking.ini, and over a Defaults.ini
+// that differs from the built-in value on every global row. All three give the
+// settings the import read, since the migration writes `default` only where the
+// imported value is what `default` gives at that launch.
 //
 // Inputs: the published build's first-run file (it shipped no config and seeded
 // none, so every player's file started as that one), no file, an empty file,
@@ -32,8 +40,11 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <optional>
+#include <set>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -56,6 +67,7 @@ namespace {
 
 using cameraunlock::TrackingMode;
 namespace cfg = cameraunlock::config;
+namespace fs = std::filesystem;
 namespace testing = cameraunlock::config::testing;
 
 // ---- Provenance ------------------------------------------------------------
@@ -140,57 +152,53 @@ void SourcesAreThePinnedOnes() {
 // ---- Scratch folders ---------------------------------------------------------
 //
 // One folder per input: GetPrivateProfileString, which both readers sit on, is
-// free to cache the file it last read.
+// free to cache the file it last read. `dir` stands for the folder holding the
+// game exe; Defaults.ini sits in `global` beside it.
 
 class Scratch {
 public:
     Scratch() {
         static unsigned s_next = 0;
-        char temp[MAX_PATH] = {};
-        GetTempPathA(MAX_PATH, temp);
-        dir_ = std::string(temp) + "hol_ht_diff_" + std::to_string(GetCurrentProcessId()) + "_" +
-               std::to_string(s_next++);
-        if (!CreateDirectoryA(dir_.c_str(), nullptr)) {
-            throw std::runtime_error("cannot create " + dir_ + ", error " + std::to_string(GetLastError()));
-        }
+        wchar_t temp[MAX_PATH + 1] = {};
+        if (GetTempPathW(MAX_PATH + 1, temp) == 0) throw std::runtime_error("GetTempPathW failed");
+        root_ = fs::path(temp) /
+                ("hol_ht_diff_" + std::to_string(GetCurrentProcessId()) + "_" + std::to_string(s_next++));
+        Remove();
+        fs::create_directories(root_ / "game");
     }
     Scratch(const Scratch&) = delete;
     Scratch& operator=(const Scratch&) = delete;
+    // A scanner can still hold a file the test just wrote, and a destructor must
+    // not throw, so a folder left behind is reported and the run carries on.
     ~Scratch() {
-        WIN32_FIND_DATAA found;
-        const HANDLE h = FindFirstFileA((dir_ + "\\*").c_str(), &found);
-        if (h != INVALID_HANDLE_VALUE) {
-            do {
-                if (found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
-                const std::string file = dir_ + "\\" + found.cFileName;
-                SetFileAttributesA(file.c_str(), FILE_ATTRIBUTE_NORMAL);
-                DeleteFileA(file.c_str());
-            } while (FindNextFileA(h, &found));
-            FindClose(h);
+        try {
+            Remove();
+        } catch (const fs::filesystem_error& e) {
+            std::printf("  scratch folder left behind: %s\n", e.what());
         }
-        RemoveDirectoryA(dir_.c_str());
     }
 
-    const std::string& dir() const { return dir_; }
-    std::string ini() const { return dir_ + "\\HeadTracking.ini"; }
-    std::wstring wini() const {
-        const std::string path = ini();
-        return std::wstring(path.begin(), path.end());
-    }
+    std::string dir() const { return (root_ / "game").string(); }
+    std::wstring wdir() const { return (root_ / "game").wstring(); }
+    std::string ini() const { return dir() + "\\HeadTracking.ini"; }
+    std::wstring wini() const { return wdir() + L"\\HeadTracking.ini"; }
+    fs::path canonical() const { return root_ / "game" / "CameraUnlock.ini"; }
+    fs::path defaults() const { return root_ / "global" / "Defaults.ini"; }
 
-    // Every file in the folder, by name, with its bytes.
+    // Every file in the game folder, by name, with its bytes.
     std::vector<std::pair<std::string, std::string>> Listing() const {
         std::vector<std::pair<std::string, std::string>> files;
-        WIN32_FIND_DATAA found;
-        const HANDLE h = FindFirstFileA((dir_ + "\\*").c_str(), &found);
-        if (h == INVALID_HANDLE_VALUE) return files;
-        do {
-            if (found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
-            files.push_back({found.cFileName, ReadFileBytes(dir_ + "\\" + found.cFileName)});
-        } while (FindNextFileA(h, &found));
-        FindClose(h);
+        for (const auto& entry : fs::directory_iterator(root_ / "game")) {
+            files.push_back({entry.path().filename().string(), ReadFileBytes(entry.path().string())});
+        }
         std::sort(files.begin(), files.end());
         return files;
+    }
+
+    std::set<std::string> Names() const {
+        std::set<std::string> names;
+        for (const auto& entry : fs::directory_iterator(root_ / "game")) names.insert(entry.path().filename().string());
+        return names;
     }
 
     void Write(const std::string& bytes) const {
@@ -199,8 +207,28 @@ public:
         if (!out) throw std::runtime_error("cannot write " + ini());
     }
 
+    void WriteDefaults(const std::string& bytes) const {
+        fs::create_directories(defaults().parent_path());
+        std::ofstream out(defaults(), std::ios::binary | std::ios::trunc);
+        out.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+        if (!out) throw std::runtime_error("cannot write " + defaults().string());
+    }
+
+    cfg::ConfigOwnerOptions<hol_ht::Config> Options() const {
+        return hol_ht::config::OwnerOptions(wdir(), cfg::DefaultsFile::At(defaults().wstring()));
+    }
+
 private:
-    std::string dir_;
+    // The read-only inputs lose the attribute first, so remove_all can delete them.
+    void Remove() const {
+        if (!fs::exists(root_)) return;
+        for (const auto& entry : fs::recursive_directory_iterator(root_)) {
+            SetFileAttributesW(entry.path().c_str(), FILE_ATTRIBUTE_NORMAL);
+        }
+        fs::remove_all(root_);
+    }
+
+    fs::path root_;
 };
 
 // ---- What a reading does -------------------------------------------------------
@@ -547,10 +575,110 @@ bool AsciiCrlf(const std::string& bytes) {
     return !bytes.empty() && bytes.back() == '\n';
 }
 
-// Comparison 2, and what the conversion must do with every input besides.
+// A file's bytes, last write time and attributes, which no load may change.
+struct FileState {
+    std::string bytes;
+    unsigned long long written = 0;
+    DWORD attributes = 0;
+    bool operator==(const FileState& other) const {
+        return bytes == other.bytes && written == other.written && attributes == other.attributes;
+    }
+};
+
+std::optional<FileState> StateOf(const fs::path& path) {
+    WIN32_FILE_ATTRIBUTE_DATA data{};
+    if (!GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &data)) {
+        if (GetLastError() == ERROR_FILE_NOT_FOUND) return std::nullopt;
+        throw std::runtime_error("cannot read the attributes of " + path.string());
+    }
+    FileState state;
+    state.bytes = ReadFileBytes(path.string());
+    state.written = (static_cast<unsigned long long>(data.ftLastWriteTime.dwHighDateTime) << 32) |
+                    data.ftLastWriteTime.dwLowDateTime;
+    state.attributes = data.dwFileAttributes;
+    return state;
+}
+
+bool LogSays(const std::vector<std::string>& log, const std::string& text) {
+    for (const std::string& line : log) {
+        if (line.find(text) != std::string::npos) return true;
+    }
+    return false;
+}
+
+// A Defaults.ini holding a value other than the built-in one on every global row
+// the table binds, so a migration that wrote `default` where the imported value
+// is not what `default` gives would read back differently over it.
+const char* const kSkewedDefaults =
+    "[CameraUnlock]\r\nConfigFormat=1\r\n\r\n"
+    "[Network]\r\nUdpPort=5252\r\n\r\n"
+    "[General]\r\nEnableOnStartup=false\r\nWorldSpaceYaw=false\r\nRotationEnabled=false\r\n\r\n"
+    "[Smoothing]\r\nLocalSmoothing=0.5\r\nRemoteSmoothing=0.5\r\n\r\n"
+    "[Position]\r\nPositionEnabled=true\r\nPositionLimitX=0.11\r\nPositionLimitY=0.12\r\n"
+    "PositionLimitYDown=0.13\r\nPositionLimitZ=0.14\r\nPositionLimitZBack=0.15\r\n\r\n"
+    "[Hotkeys]\r\nToggleKey=F8\r\nCycleTrackingModeKey=F9\r\nYawModeKey=F10\r\n";
+
+// The folder beside this executable the migrated files are written to, for
+// lint-migrated.mjs, which CTest runs after this test.
+fs::path MigratedFolder() {
+    std::vector<wchar_t> exe(MAX_PATH);
+    for (;;) {
+        const DWORD length = GetModuleFileNameW(nullptr, exe.data(), static_cast<DWORD>(exe.size()));
+        if (length == 0) throw std::runtime_error("cannot find this executable's path");
+        if (length < exe.size()) return fs::path(std::wstring(exe.data(), length)).parent_path() / "migrated";
+        exe.resize(exe.size() * 2);
+    }
+}
+
+// Runs the owner's Load in `s`, whose game folder holds the input as
+// HeadTracking.ini or nothing, checks what a load must do beyond comparison 2,
+// and returns the settings the session runs on. A file it creates by migrating
+// goes into `migrated_files`.
+std::optional<hol_ht::Config> Migrate(const Input& input, const Scratch& s, const std::string& label,
+                                      std::set<std::string>& migrated_files) {
+    const char* name = label.c_str();
+    const fs::path legacy = fs::path(s.wini());
+    const std::optional<FileState> legacy_before = StateOf(legacy);
+    const std::set<std::string> both{"CameraUnlock.ini", "HeadTracking.ini"};
+
+    const cfg::ConfigLoadResult<hol_ht::Config> loaded = cfg::ConfigOwner<hol_ht::Config>(s.Options()).Load();
+    const cfg::ConfigLoadStatus want = input.present ? cfg::ConfigLoadStatus::Migrated : cfg::ConfigLoadStatus::Created;
+    if (loaded.status != want) {
+        std::printf("  %s: %s, %s\n", name, cfg::ConfigLoadStatusName(loaded.status), loaded.reason.c_str());
+    }
+    CHECK_MSG(loaded.status == want, "every legacy input imports, and no file is created");
+    CHECK_MSG(StateOf(legacy) == legacy_before, "a load leaves HeadTracking.ini's bytes, write time and attributes");
+    if (loaded.status != want) return std::nullopt;
+    CHECK_MSG(s.Names() == (input.present ? both : std::set<std::string>{"CameraUnlock.ini"}),
+              "the game folder holds HeadTracking.ini and CameraUnlock.ini and nothing else");
+
+    const std::string migrated = ReadFileBytes(s.canonical().string());
+    CHECK_MSG(cfg::HasCanonicalStamp(migrated), "CameraUnlock.ini carries the stamp");
+    CHECK_MSG(AsciiCrlf(migrated), "CameraUnlock.ini is ASCII with CRLF line ends");
+    hol_ht::Config reread;
+    const std::vector<std::string> diagnostics = CanonicalDiagnostics(migrated, reread);
+    for (const std::string& d : diagnostics) std::printf("  %s: CameraUnlock.ini, %s\n", name, d.c_str());
+    CHECK_MSG(diagnostics.empty(), "CameraUnlock.ini reads with no diagnostic");
+    if (input.present) migrated_files.insert(migrated);
+
+    // The next start reads CameraUnlock.ini, imports nothing and writes nothing.
+    const std::optional<FileState> created = StateOf(s.canonical());
+    const cfg::ConfigLoadResult<hol_ht::Config> again = cfg::ConfigOwner<hol_ht::Config>(s.Options()).Load();
+    CHECK_MSG(again.status == cfg::ConfigLoadStatus::Canonical, "the next start reads CameraUnlock.ini");
+    CHECK_MSG(Differences(ObserveCanonical(again.config), ObserveCanonical(loaded.config)).empty(),
+              "the next start runs on the same settings");
+    CHECK_MSG(StateOf(s.canonical()) == created && StateOf(legacy) == legacy_before,
+              "the next start changes neither file");
+    CHECK_MSG(!input.present || LogSays(again.log, "is left as it was and is not read"),
+              "the next start logs that HeadTracking.ini is not read");
+    return loaded.config;
+}
+
+// Comparison 2, and what the migration must do with every input besides.
 void ImportAgainstMigration(const std::vector<Input>& inputs) {
     const std::string committed = ReadFileBytes(std::string(HOL_SOURCE_DIR) + "/config/HeadTracking.ini");
     const cfg::ConfigTable<hol_ht::Config> table = hol_ht::config::Table();
+    std::set<std::string> migrated_files;
     int compared = 0;
     for (const Input& input : inputs) {
         const char* name = input.name.c_str();
@@ -576,55 +704,79 @@ void ImportAgainstMigration(const std::vector<Input>& inputs) {
         const bool drops_ok = PoseShapingIsTheOnlyDrop(read, imported);
         if (!drops_ok) std::printf("  comparison 2, %s: dropped values\n", name);
         CHECK_MSG(drops_ok, "comparison 2: the only drops are pose shaping set away from what shipped");
+        const Observed want = ObserveLegacy(read);
 
+        // Over a Defaults.ini the owner creates with the built-in values.
         Scratch s;
         if (input.present) s.Write(input.bytes);
-        cfg::ConfigOwner<hol_ht::Config> owner(hol_ht::config::OwnerOptions(s.wini()));
-        const cfg::ConfigLoadResult<hol_ht::Config> loaded = owner.Load();
-        const cfg::ConfigLoadStatus want =
-            input.present ? cfg::ConfigLoadStatus::Migrated : cfg::ConfigLoadStatus::Created;
-        if (loaded.status != want) {
-            std::printf("  comparison 2, %s: %s, %s\n", name, cfg::ConfigLoadStatusName(loaded.status),
-                        loaded.reason.c_str());
+        const std::optional<hol_ht::Config> migrated = Migrate(input, s, input.name, migrated_files);
+        if (migrated) {
+            const std::vector<std::string> diff = Differences(want, ObserveCanonical(*migrated));
+            for (const std::string& d : diff) std::printf("  comparison 2, %s: %s\n", name, d.c_str());
+            CHECK_MSG(diff.empty(), "comparison 2: the migration runs as the import read");
+
+            // Over the built-in values the table's own defaults stand for Defaults.ini.
+            hol_ht::Config reread;
+            CanonicalDiagnostics(ReadFileBytes(s.canonical().string()), reread);
+            CHECK_MSG(Differences(ObserveCanonical(reread), ObserveCanonical(*migrated)).empty(),
+                      "CameraUnlock.ini reads back as the settings the session runs on");
+
+            // Fresh equals upgrade: the published build's first-run file, and no
+            // file at all, both end as the committed file.
+            if (input.name == "dev c24cc5a first-run file" || input.name == "no file") {
+                CHECK_MSG(ReadFileBytes(s.canonical().string()) == committed,
+                          "the first-run file and no file both give the committed file");
+            }
         }
-        CHECK_MSG(loaded.status == want, "every legacy input converts, and no file is created");
 
-        const std::vector<std::string> diff = Differences(ObserveLegacy(read), ObserveCanonical(loaded.config));
-        for (const std::string& d : diff) std::printf("  comparison 2, %s: %s\n", name, d.c_str());
-        CHECK_MSG(diff.empty(), "comparison 2: the migration runs as the import read");
-
-        const std::string migrated = ReadFileBytes(s.ini());
-        hol_ht::Config reread;
-        const std::vector<std::string> diagnostics = CanonicalDiagnostics(migrated, reread);
-        for (const std::string& d : diagnostics) std::printf("  %s: migrated file, %s\n", name, d.c_str());
-        CHECK_MSG(diagnostics.empty(), "the migrated file reads with no diagnostic");
-        CHECK_MSG(AsciiCrlf(migrated), "the migrated file is ASCII with CRLF line ends");
-        CHECK_MSG(Differences(ObserveCanonical(reread), ObserveCanonical(loaded.config)).empty(),
-                  "the migrated file reads back as the settings the session runs on");
-        CHECK_MSG(cfg::RenderCanonical(table, reread, hol_ht::config::Header()) == migrated,
-                  "rendering the re-read settings gives the migrated bytes");
+        // From a read-only HeadTracking.ini, which keeps its attribute.
         if (input.present) {
-            CHECK_MSG(ReadFileBytes(s.ini() + ".pre-canonical") == input.bytes,
-                      ".pre-canonical holds the input byte for byte");
+            Scratch ro;
+            ro.Write(input.bytes);
+            SetFileAttributesA(ro.ini().c_str(), FILE_ATTRIBUTE_READONLY);
+            const std::optional<hol_ht::Config> c = Migrate(input, ro, input.name + " (read-only)", migrated_files);
+            CHECK_MSG(c && Differences(want, ObserveCanonical(*c)).empty(),
+                      "a read-only HeadTracking.ini imports as a writable one does");
+            CHECK_MSG((GetFileAttributesA(ro.ini().c_str()) & FILE_ATTRIBUTE_READONLY) != 0,
+                      "HeadTracking.ini keeps its read-only attribute");
         }
 
-        cfg::ConfigOwner<hol_ht::Config> again(hol_ht::config::OwnerOptions(s.wini()));
-        CHECK_MSG(again.Load().status == cfg::ConfigLoadStatus::Canonical, "the migrated file loads as canonical");
-        CHECK_MSG(ReadFileBytes(s.ini()) == migrated, "loading the migrated file again changes nothing");
-
-        // Fresh equals upgrade: the published build's first-run file, and no file
-        // at all, both end as the committed file.
-        if (input.name == "dev c24cc5a first-run file" || input.name == "no file") {
-            CHECK_MSG(migrated == committed, "the first-run file and no file both give the committed file");
+        // Over a Defaults.ini that differs everywhere. With no legacy file the
+        // settings are Defaults.ini's own, so only an input with a file is held
+        // to the import there.
+        if (input.present) {
+            Scratch skewed;
+            skewed.Write(input.bytes);
+            skewed.WriteDefaults(kSkewedDefaults);
+            const std::optional<hol_ht::Config> c =
+                Migrate(input, skewed, input.name + " (skewed Defaults.ini)", migrated_files);
+            const std::vector<std::string> diff =
+                c ? Differences(want, ObserveCanonical(*c)) : std::vector<std::string>{"the load"};
+            for (const std::string& d : diff) std::printf("  comparison 2, %s (skewed Defaults.ini): %s\n", name, d.c_str());
+            CHECK_MSG(diff.empty(), "the migration gives the import's settings over a Defaults.ini that differs everywhere");
         }
         ++compared;
     }
     std::printf("comparison 2: %d inputs\n", compared);
+
+    // Core's canonical config lint runs over these next (lint-migrated.mjs).
+    const fs::path lint = MigratedFolder();
+    fs::remove_all(lint);
+    fs::create_directories(lint);
+    std::size_t n = 0;
+    for (const std::string& file : migrated_files) {
+        std::ofstream out(lint / (std::to_string(n++) + ".ini"), std::ios::binary | std::ios::trunc);
+        out.write(file.data(), static_cast<std::streamsize>(file.size()));
+        if (!out) throw std::runtime_error("cannot write a migrated file under " + lint.string());
+    }
+    std::printf("%zu distinct migrated files written to %s\n", migrated_files.size(), lint.string().c_str());
 }
 
 }  // namespace
 
 int main() {
+    // Unbuffered, so the lines before an uncaught exception reach the log.
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     SourcesAreThePinnedOnes();
     FirstRunFileIsThePublishedBuilds();
     const std::vector<Input> inputs = Inputs();

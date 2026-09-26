@@ -37,7 +37,7 @@ set "MOD_SEED_FILES="
 :: reinstall: paths relative to the game folder, quoted when one holds a space.
 :: Keep the line when it is blank, or the list another mod's uninstall.cmd set
 :: in the same console is used instead.
-set "PRESERVE_FILES=Oregon\Binaries\Win64\HeadTracking.ini Oregon\Binaries\WinGDK\HeadTracking.ini"
+set "PRESERVE_FILES=Oregon\Binaries\Win64\CameraUnlock.ini Oregon\Binaries\Win64\HeadTracking.ini Oregon\Binaries\WinGDK\CameraUnlock.ini Oregon\Binaries\WinGDK\HeadTracking.ini"
 :: Config and log files the mod writes at runtime, removed from wherever the
 :: DLLs were deployed.
 set "MOD_LEFTOVERS=HeadTracking.log HeadTracking.prev.log"
