@@ -224,7 +224,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## cameraunlock-core
 
-- **Version:** commit `def74d7`
+- **Version:** commit `b4df73a`
 - **License:** `MIT`
 - **Upstream:** https://github.com/itsloopyo/cameraunlock-core
 - **Usage:** Shared head tracking runtime: UDP receiver, pose processing, hook manager, Unreal camera maths, hotkey polling and the DX11 aim marker.
